@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Divulga Links — Painel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%97%3C/text%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <div class="marca">
+      <span class="logo">🔗</span>
+      <div>
+        <h1>Divulga Links</h1>
+        <p class="subtitulo">Automação de afiliados</p>
+      </div>
+    </div>
+    <nav id="abas">
+      <button data-aba="status" class="ativa">📊 Status</button>
+      <button data-aba="nichos">🏷️ Nichos</button>
+      <button data-aba="configuracoes">⚙️ Configurações</button>
+      <button data-aba="canais">📡 Canais</button>
+      <button data-aba="produtos">📦 Produtos</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="secao-status" class="secao ativa">
+      <div class="cabecalho-secao">
+        <h2>Status do sistema</h2>
+        <button id="btn-atualizar-status" class="secundario">Atualizar</button>
+      </div>
+
+      <div id="card-disparo-automatico" class="card-controle">
+        <div>
+          <h3>Disparo automático</h3>
+          <p id="texto-disparo-automatico">Carregando...</p>
+        </div>
+        <div>
+          <button id="btn-iniciar-disparo">Iniciar</button>
+          <button id="btn-pausar-disparo" class="perigo">Pausar</button>
+        </div>
+      </div>
+
+      <div id="cards-status" class="grade-cards"></div>
+
+      <div id="card-chrome" class="card-controle">
+        <div>
+          <h3>Chrome (gerador de link ML)</h3>
+          <p id="texto-chrome">Carregando...</p>
+        </div>
+        <div>
+          <button id="btn-abrir-chrome">Abrir Chrome</button>
+        </div>
+      </div>
+
+      <div id="card-whatsapp" class="card-controle">
+        <div>
+          <h3>WhatsApp (Evolution API)</h3>
+          <p id="texto-whatsapp">Carregando...</p>
+        </div>
+        <div>
+          <button id="btn-conectar-whatsapp">Conectar</button>
+          <button id="btn-listar-grupos-whatsapp" class="secundario">Ver grupos</button>
+          <button id="btn-monitorar-grupos-whatsapp" class="secundario">Grupos monitorados</button>
+        </div>
+      </div>
+      <div id="lista-grupos-whatsapp" style="display:none"></div>
+      <div id="lista-monitorar-grupos-whatsapp" style="display:none">
+        <p style="font-size: 13px; color: var(--text-muted); margin: 8px 0;">
+          Marque os grupos do WhatsApp que quer monitorar — mesma lógica do Telegram: reconhece sozinho lista de cupons ou card de produto.
+        </p>
+        <div id="checkboxes-grupos-whatsapp"></div>
+        <button id="btn-salvar-grupos-whatsapp" style="margin-top: 10px">Salvar seleção</button>
+      </div>
+
+      <div id="card-telegram-listener" class="card-controle">
+        <div>
+          <h3>Monitor de grupos (Telegram)</h3>
+          <p id="texto-telegram-listener">Carregando...</p>
+        </div>
+        <div>
+          <button id="btn-conectar-telegram-listener">Conectar</button>
+          <button id="btn-escolher-grupo-telegram" class="secundario">Grupos monitorados</button>
+        </div>
+      </div>
+      <div id="lista-grupos-telegram" style="display:none">
+        <p style="font-size: 13px; color: var(--text-muted); margin: 8px 0;">
+          Marque os grupos que quer monitorar — pode ser um grupo de lista de cupons ou um grupo que posta cards de produto (link + às vezes cupom), o sistema reconhece os dois formatos sozinho.
+        </p>
+        <div id="checkboxes-grupos-telegram"></div>
+        <button id="btn-salvar-grupos-telegram" style="margin-top: 10px">Salvar seleção</button>
+      </div>
+    </section>
+
+    <div id="modal-telegram-login" class="modal-overlay" style="display:none">
+      <div class="modal-caixa">
+        <h3>Conectar conta do Telegram</h3>
+        <p>Login com o número que vai ficar só monitorando o grupo de cupons (não precisa ser o do bot).</p>
+
+        <form id="form-telegram-telefone">
+          <input name="telefone" placeholder="+55 11 91234-5678" required />
+          <button type="submit">Enviar código</button>
+        </form>
+
+        <form id="form-telegram-codigo" style="display:none">
+          <input name="codigo" placeholder="Código recebido no Telegram" required />
+          <button type="submit">Confirmar código</button>
+        </form>
+
+        <form id="form-telegram-senha" style="display:none">
+          <input name="senha" type="password" placeholder="Senha de verificação em duas etapas" required />
+          <button type="submit">Confirmar senha</button>
+        </form>
+
+        <p id="erro-telegram-login" class="erro-texto"></p>
+        <button id="btn-fechar-telegram-login" class="secundario">Fechar</button>
+      </div>
+    </div>
+
+    <div id="modal-qrcode" class="modal-overlay" style="display:none">
+      <div class="modal-caixa">
+        <h3>Escaneie com o WhatsApp</h3>
+        <p>No celular: WhatsApp &gt; Aparelhos conectados &gt; Conectar um aparelho.</p>
+        <div id="qrcode-conteudo"></div>
+        <button id="btn-fechar-qrcode" class="secundario">Fechar</button>
+      </div>
+    </div>
+
+    <section id="secao-nichos" class="secao">
+      <div class="cabecalho-secao">
+        <h2>Nichos</h2>
+      </div>
+      <p>
+        Cada nicho busca direto nas categorias reais do Mercado Livre (aba Ofertas).
+        Pra descobrir o ID de uma categoria: abra
+        <a href="https://www.mercadolivre.com.br/ofertas" target="_blank">mercadolivre.com.br/ofertas</a>,
+        clique numa categoria na barra lateral e veja o <code>?category=MLB...</code> na URL.
+      </p>
+      <table id="tabela-nichos">
+        <thead>
+          <tr><th>Ativo</th><th>Nome</th><th>IDs de categoria (separados por vírgula)</th><th></th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+      <h3>Novo nicho</h3>
+      <form id="form-novo-nicho" class="form-linha">
+        <input name="id" placeholder="id (ex: esportes)" required />
+        <input name="nome" placeholder="Nome (ex: Esportes)" required />
+        <input name="categoriaIds" placeholder="ex: MLB1276" required />
+        <button type="submit">Adicionar</button>
+      </form>
+    </section>
+
+    <section id="secao-configuracoes" class="secao">
+      <div class="cabecalho-secao">
+        <h2>Configurações</h2>
+      </div>
+
+      <div id="card-chamada-ia" class="card-controle">
+        <div>
+          <h3>Chamada por IA (frase de efeito nos produtos)</h3>
+          <p id="texto-chamada-ia">Carregando...</p>
+        </div>
+        <div>
+          <button id="btn-ativar-chamada-ia">Ativar</button>
+          <button id="btn-desativar-chamada-ia" class="perigo">Desativar</button>
+        </div>
+      </div>
+
+      <form id="form-config" class="form-linha">
+        <label>Desconto mínimo real (%) pra capturar um produto:
+          <input type="number" name="descontoMinimo" min="0" max="100" />
+        </label>
+        <label>Link fixo dos cupons repassados (lista de recomendações do ML):
+          <input type="text" name="linkCupomFixo" placeholder="https://meli.la/xxxxxxx" style="width: 260px" />
+        </label>
+        <button type="submit">Salvar</button>
+      </form>
+    </section>
+
+    <section id="secao-canais" class="secao">
+      <div class="cabecalho-secao">
+        <h2>Canais de destino</h2>
+      </div>
+      <table id="tabela-canais">
+        <thead>
+          <tr>
+            <th>Ativo</th><th>Nome</th><th>Tipo</th><th>Identificador</th><th>Categorias permitidas</th>
+            <th>Desconto mín. (%)</th><th>Intervalo mín. (min)</th><th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+      <h3>Novo canal</h3>
+      <form id="form-novo-canal" class="form-linha">
+        <input name="nome" placeholder="Nome (ex: Grupo Ofertas VIP)" />
+        <select name="tipo">
+          <option value="telegram">telegram</option>
+          <option value="whatsapp">whatsapp</option>
+        </select>
+        <input name="identificadorGrupo" placeholder="chat_id ou identificador" required />
+        <input name="categoriasPermitidas" placeholder="nichos permitidos (vazio = todos)" />
+        <input name="descontoMinimo" type="number" placeholder="desconto mín. %" value="0" />
+        <input name="intervaloMinimoMinutos" type="number" placeholder="intervalo mín. (min)" value="15" />
+        <button type="submit">Adicionar</button>
+      </form>
+    </section>
+
+    <section id="secao-produtos" class="secao">
+      <div class="cabecalho-secao">
+        <h2>Produtos</h2>
+        <div>
+          <select id="filtro-status">
+            <option value="">Todos os status</option>
+            <option value="capturado">capturado</option>
+            <option value="enviado">enviado</option>
+          </select>
+          <select id="filtro-nicho">
+            <option value="">Todos os nichos</option>
+          </select>
+          <select id="filtro-fonte">
+            <option value="">Todas as origens</option>
+            <option value="mercado_livre">Mercado Livre (captura)</option>
+            <option value="monitorados">Grupos monitorados</option>
+          </select>
+          <button id="btn-capturar-agora">Capturar agora</button>
+          <button id="btn-limpar-produtos" class="perigo">Limpar produtos</button>
+        </div>
+      </div>
+      <p id="resultado-captura"></p>
+      <div id="lista-produtos" class="grade-produtos"></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,270 @@
+# Status do Projeto — Sistema de Automação para Afiliados
+
+> Complementa o `PROJETO_AUTOMACAO_AFILIADOS.md` (especificação original). Este arquivo registra o que já foi construído, as decisões tomadas (e por quê) e o que falta, pra continuar o desenvolvimento em qualquer máquina/sessão.
+
+Última atualização: 2026-07-26.
+
+---
+
+## 1. O que já funciona (ponta a ponta)
+
+**Painel web** (`npm run ui`, porta configurável em `PORTA_UI`) de onde dá pra controlar tudo: nichos ativos, desconto mínimo, canais de destino, ver produtos capturados e disparar manualmente.
+
+Fluxo: **Capturar (busca, por categoria real do ML, as ofertas de cada nicho ativo — botão na UI ou API) → zera a tabela de produtos inteira e insere a nova leva do zero → produtos salvos no Postgres (deduplicados dentro da mesma leva) → usuário revisa e clica "Disparar" por produto/canal → gera link de afiliado real (`meli.la`) + legenda → envia foto+legenda pro Telegram ou WhatsApp (Evolution API, conforme `canal.tipo`) → registra em `disparos`.**
+
+Captura é **só manual** (botão/API), sem agendamento automático — decisão explícita do usuário. **Cada captura apaga a tabela `produtos` inteira** (inclusive já `enviado`, e o histórico de `disparos` junto por `ON DELETE CASCADE`) e insere a leva nova do zero — decisão explícita do usuário (mudou de ideia depois de uma versão anterior que preservava `enviado`; ver `produtosRepo.removerTodos()`). **Consequência aceita conscientemente**: sem histórico de disparos entre capturas, a deduplicação não impede reenviar um produto que apareça de novo numa captura futura.
+
+Existe um nicho especial **"geral"** (`categoria_ids` vazio) — captura direto da aba principal de Ofertas, **sem nenhum filtro de categoria** (12 páginas, mira em 400+ produtos), pra servir canais que postam qualquer tipo de conteúdo. O hash de deduplicação inclui o nicho, então **o mesmo produto real pode existir uma vez em "tecnologia" e de novo em "geral"** — isso é intencional (são públicos/canais diferentes), só é bloqueado como duplicado se repetir dentro do mesmo nicho.
+
+**Disparo automático existe, mas começa pausado** — tem um botão **Iniciar/Pausar** na aba Status (`configuracoes.disparo_automatico_ativo`, default `false`). Com "Iniciar" clicado, `src/servidor/agendadorDisparo.ts` confere a cada 1 minuto todos os canais ativos; se já passou o `intervalo_minimo_minutos` desde o último envio bem-sucedido daquele canal, pega o produto elegível mais antigo (FIFO) ainda `capturado` e dispara sozinho. Pausar simplesmente para de disparar — como a escolha é sempre "o mais antigo ainda não enviado", retomar depois **continua de onde parou** automaticamente, sem estado extra pra gerenciar.
+
+**Regra de categoria mudou de sentido**: canal com `categorias_permitidas` vazio/null **antes** aceitava produto de qualquer nicho — **agora só aceita produtos do nicho "geral"**. Pra aceitar nichos específicos, precisa listar explicitamente (ex.: `["tecnologia","gamer"]`).
+
+**Bug de fuso horário corrigido** (migration `007`): colunas `TIMESTAMP` sem fuso (`disparos.enviado_em`, `oauth_tokens.expira_em/atualizado_em`, `produtos.criado_em`, `schema_migrations.aplicada_em`) eram gravadas certas (Postgres roda em UTC) mas lidas de volta como se fossem no fuso local do processo Node (Brasília, UTC-3) — gerando erro de ~3h nas contas de intervalo (ex.: "faltam 170 min" quando devia ser elegível). Todas viraram `TIMESTAMPTZ`. **Se alguma coluna de timestamp nova for criada no futuro, usar sempre `TIMESTAMPTZ`, nunca `TIMESTAMP` puro.**
+
+Testado de ponta a ponta: captura real (608-1105 produtos novos por rodada, todos os 6 nichos incluindo "geral"), filtro por nicho na aba Produtos, cálculo de canais elegíveis com a nova regra de categoria, e **disparo automático real disparando sozinho** (confirmado: pegou o próximo produto elegível, gerou link real, enviou pro Telegram, registrou em `disparos`, tudo sem intervenção manual).
+
+---
+
+## 2. Decisões importantes (o "porquê")
+
+### 2.1 Mercado Livre — captura de produtos
+
+- **`/sites/MLB/search` (busca pública) está bloqueado (403) pra apps novas**, e a combinação `/products/search` + `/products/{id}/items` (API de Catálogo, autenticada via OAuth) **funciona mas tinha taxa de acerto baixíssima** (~5% dos candidatos tinham desconto real) e trazia produtos genéricos/pouco relevantes (kits de roupa de fabricante obscuro, etc.). Essa abordagem foi **substituída** pela de baixo.
+- **Solução atual: scraping da própria aba "Ofertas" do site** (`mercadolivre.com.br/ofertas?page=N`), via Playwright conectado por CDP na mesma janela de Chrome logada que já usamos pro link builder (`src/integracoes/mercadoLivre/ofertasScraper.ts`). Essa página é renderizada client-side (dados não vêm no HTML puro, por isso `curl` simples não funciona) e retorna produtos **já curados pelo ML como promoção de verdade**, com desconto, nome, imagem e link reais — muito melhor volume e qualidade que a API de Catálogo.
+  - Seletores usados: `.poly-card` (cada card), `.poly-component__title` (nome + link), `img` (imagem), `.poly-price__current .andes-money-amount` (preço atual, via `aria-label` tipo "253 reais com 80 centavos"), `.andes-money-amount--previous` (preço original, mesmo formato com prefixo "Antes:").
+  - Paginação simples via `?page=N` (testado e confirmado — páginas diferentes trazem produtos diferentes).
+  - **Casamento com nicho — 2ª versão, por categoria real do ML (não por palavra-chave)**: a primeira versão comparava o título do produto contra uma lista de termos por nicho — isso não era a intenção certa (nicho é pra decidir **o que cada canal recebe**, não pra descartar produto na captura) e também tinha baixo volume/bugs de acento (`relogio` não batia com `Relógio`). A versão atual usa o **filtro de categoria real da barra lateral da aba Ofertas**: `mercadolivre.com.br/ofertas?category=MLB1246` filtra a mesma listagem (`.poly-card`) só daquela categoria — sem ambiguidade, sem casamento de texto. Cada nicho agora guarda uma lista de `categoria_ids` (ex.: `MLB1246` = Beleza e Cuidado Pessoal) em vez de termos de busca. Descobrir o ID: abrir a aba Ofertas, clicar na categoria na barra lateral, ler `?category=` na URL.
+    - IDs mapeados: tecnologia = `MLB1051,MLB1000,MLB1648` (Celulares, Eletrônicos, Informática) · beleza = `MLB1246` · moda = `MLB1430,MLB3937` (Calçados/Roupas/Bolsas, Joias e Relógios) · casa = `MLB1574,MLB5726` (Casa/Móveis/Decoração, Eletrodomésticos) · gamer = `MLB1144` (Games).
+    - Captura agora busca 2 páginas por categoria de cada nicho ativo (não mais um número fixo de páginas da aba geral) — resultado real: **608 produtos** numa rodada (vs. 32 da versão por palavra-chave), todos corretamente tagueados, zero descartados por "não achou palavra-chave".
+    - A aba Produtos ganhou um filtro por nicho (o limite de listagem também subiu de 200 pra 1000, já que agora há muito mais produtos).
+  - A API de Catálogo (`/products/search` etc.) e o OAuth do ML (`auth.ts`, `npm run meli:autorizar`) continuam no código (podem servir pra outra coisa no futuro) mas **não são mais usados na captura** — a aba Status ainda mostra a validade do token só informativamente.
+- **Dado de cupom específico (tipo "cupom: PRESENTE") não é acessível pela API oficial no nosso nível de acesso** (testamos `deal_ids`, sempre vazio; `/items/{id}`, 403). A aba Ofertas, no entanto, já traz o desconto percentual real direto no card, então esse problema ficou menos relevante — o desconto exibido lá é a promoção de fato.
+- **Escuta de grupos de terceiros (Telegram/WhatsApp) foi cogitada** como fonte alternativa, mas **foi explicitamente adiada** pelo usuário. Não retomar sem o usuário pedir.
+- **Nichos**: cada nicho tem um id, nome e lista de termos de busca — agora usados como **palavras-chave de casamento** contra o título de cada oferta raspada, não mais como termo de busca de API (tabela `nichos` no Postgres, gerenciável pela aba Nichos da UI). 5 nichos seedados: tecnologia, beleza, moda, casa, gamer.
+- A captura (`capturarProdutos.ts`) **também depende da janela do Chrome logada** agora (mesma dependência do link builder, ver seção 2.2) — sem ela aberta, a captura falha.
+
+### 2.2 Geração de link de afiliado
+
+- **Não existe API oficial do Mercado Livre pra gerar link curto `meli.la`.** Confirmado via pesquisa (inclusive reclamação no Reclame Aqui com esse título literal). A ferramenta "Gerador de produtos recomendados" (`mercadolivre.com.br/afiliados/linkbuilder`) só existe como página web autenticada.
+- **Solução**: automação via Playwright conectando por **CDP** (`chromium.connectOverCDP('http://localhost:9222')`) numa janela de **Chrome real, aberta manualmente pelo usuário e mantida logada**. O script preenche a URL do produto, clica "Gerar" e lê o resultado do mesmo `<textarea aria-label="Copie o link e comece a compartilhá-lo">` (esse elemento é reaproveitado tanto pro link de sucesso quanto pra mensagem de erro "Este URL não é permitido pelo Programa").
+- **Por que não dá pra automatizar o login também**: o Google bloqueia login automatizado (mensagem "esse navegador pode não ser seguro") em qualquer navegador pilotado por CDP — mesmo usando o Chrome real (`channel: "chrome"`), mesmo sem headless. A única saída é o usuário logar manualmente numa janela **não controlada pelo Playwright no momento do login**, e a automação só entra depois, conectando numa sessão já autenticada.
+- **A sessão não sobrevive ao fechar a janela** (testamos: fechar e reabrir com o profile salvo em disco redireciona pro login de novo). Por isso o modelo atual é "deixe a janela do Chrome aberta o tempo todo", não "logue uma vez e feche".
+- **Sem fallback** — foi removido por pedido explícito do usuário (o antigo fallback usava `matt_word`/`matt_tool` + TinyURL, com um hop extra que ele não gostava). Se a janela do Chrome não estiver aberta/logada, a geração de link falha (e o disparo correspondente fica marcado como `falhou` em `disparos`, sem corromper o produto).
+- Resultado é cacheado no Redis (`link_afiliado:mercado_livre:{urlProduto}`) pra nunca gerar o mesmo link duas vezes.
+- **Status na UI**: a aba Status tenta conectar no CDP só pra checar (nunca fecha a conexão — fechar poderia matar a janela real do usuário).
+
+### 2.3 Geração de conteúdo pro envio
+
+- **Não é um card com imagem+texto desenhados juntos.** Primeira versão usava Playwright/HTML pra renderizar um card flatten (uma imagem só, com preço/título embutidos) — **foi descartada** depois que o usuário mostrou um print de grupo de promoção real: o formato certo é a **foto original do produto sem edição** enviada como mídia, com **título/preço/link como legenda de texto** da mensagem (formato nativo do WhatsApp/Telegram).
+- `src/legenda/gerarLegenda.ts` monta a legenda: **chamada** (frase de efeito, opcional, linha solta antes do título), título em `*negrito*`, linha "De: X | Por: Y 🔥" (só quando há desconto real), linha de cupom se houver, e "Link: ..." no final.
+- **Chamada gerada por IA local (Ollama)**: `src/integracoes/ollama/gerarChamada.ts` chama `POST /api/generate` do Ollama (`OLLAMA_URL`, padrão `http://localhost:11434`; `OLLAMA_MODELO`, padrão `qwen2.5:3b` — baixado localmente, ~1.9GB) com um prompt few-shot pra criar uma frase curta de efeito a partir do título do produto. **Qualidade é inconsistente** (modelo pequeno, às vezes sai algo estranho/mal formado) — por isso a chamada é sempre **editável na UI** (aba Produtos, campo de texto por produto) com botão "Gerar com IA" (chama de novo) e "Salvar" (grava manualmente). Gerada **sob demanda**, nunca em massa na captura (custaria minutos pra 1000+ produtos) — só quando o usuário clica "Gerar com IA" ou automaticamente na primeira vez que o produto é disparado (`dispararParaCanal` gera e cacheia em `produtos.chamada` se estiver vazia).
+
+### 2.4 Telegram
+
+- Bot criado via **@BotFather** (token em `.env`, nunca em `.env.example`).
+- Envio via `sendPhoto` (Bot API), passando a **URL da imagem direto** (sem precisar baixar/re-upload). `chatId` agora é parâmetro (vem do canal escolhido), não fixo no `.env`.
+- `chat_id` de grupo: bots em **grupo** têm "Privacy Mode" ligado por padrão — só recebem comandos/menções, não mensagens comuns. Pra pegar o `chat_id` via `getUpdates`, ou desliga o Privacy Mode (@BotFather → Bot Settings → Group Privacy → Turn off) ou usa canal (que não tem essa restrição, mas exige o bot como **admin**).
+
+### 2.5 WhatsApp (Evolution API)
+
+- **Envio implementado** via [Evolution API](https://github.com/EvolutionAPI/evolution-api) self-hosted (Docker, `atendai`/`evoapicloud` image), que abstrai o protocolo do WhatsApp Web (Baileys) atrás de uma REST API — a mesma abordagem recomendada no doc original (seção 2, "Stack recomendada").
+- **Infra**: dois serviços novos no `docker-compose.yml` — `evolution-postgres` (Postgres dedicado só pra Evolution, banco/schema próprios, sem exposição de porta no host) e `evolution-api` (porta `8080`, reaproveita o Redis do projeto só com DB index separado `/6` pra não colidir com o cache/filas do resto do sistema). `AUTHENTICATION_API_KEY` (a "senha" da API) vem de `EVOLUTION_API_KEY` no `.env`.
+- **Pareamento por QR code, feito pelo próprio painel** (aba Status → card "WhatsApp (Evolution API)" → botão "Conectar"): abre um modal com o QR, que se **renova sozinho a cada 25s** (o QR do WhatsApp expira rápido, ~20-60s) e faz polling do status a cada 3s até detectar conexão. Não precisa terminal pra parear — diferente do Chrome do Mercado Livre, essa sessão fica guardada no Postgres da própria Evolution API (`DATABASE_SAVE_DATA_INSTANCE=true`), então **sobrevive a restart do container** (ao contrário da sessão do Chrome/ML, que morre se a janela fechar).
+- **Descoberta de grupo**: botão "Ver grupos" na mesma aba lista todos os grupos que a instância participa (nome + JID, com botão de copiar), usando `GET /group/fetchAllGroups/{instance}`. Isso resolve o mesmo problema que o Telegram tem com `chat_id` — o usuário não precisa caçar o identificador manualmente, só conecta o WhatsApp, entra nos grupos de destino pelo próprio celular, e usa "Ver grupos" pra pegar o JID (formato `xxxxxxxxxx-xxxxxxxxxx@g.us`) e colar no campo "Identificador" ao criar o canal (tipo `whatsapp`).
+- **Envio**: `src/integracoes/evolutionApi/bot.ts`, mesmo formato de assinatura do `telegram/bot.ts` (`enviarFotoComLegenda(fotoUrl, legenda, identificador)`) — `dispararParaCanal` (`src/servicos/dispararProduto.ts`) agora escolhe qual dos dois chamar com base em `canal.tipo`, sem duplicar a lógica de gerar link/legenda/registrar disparo. `POST /message/sendMedia/{instance}` com `{ number: grupoJid, mediatype: "image", media: fotoUrl, caption: legenda }` — `*negrito*` da legenda já funciona igual no WhatsApp (não precisou mudar `gerarLegenda.ts`).
+- **Não implementado ainda**: escuta de grupos de terceiros (webhook `messages.upsert`) — só envio pra grupos próprios por enquanto, conforme o roadmap original (item 7, adiado) trata escuta como etapa separada e posterior ao envio.
+
+### 2.6 Painel web / configuração dinâmica
+
+- Nichos, desconto mínimo e canais de destino **viraram tabelas no Postgres** (`nichos`, `configuracoes`, `canais_destino`) em vez de variáveis de `.env` — editáveis em tempo real pela UI, sem restart.
+- **Credenciais continuam só no `.env`** (client_secret do ML, token do Telegram) — decisão explícita do usuário. A UI mostra status ("conectado"/"token válido até X"), nunca edita segredo.
+- **Disparo passa a ser manual** — captura só grava produtos no banco (`status = 'capturado'`); o usuário revisa na aba Produtos e clica "Disparar" por canal elegível. Isso substituiu o worker automático que existia antes (`disparoTeste.ts`, removido).
+- **Motor de Regras (seção 3.6 do doc original) finalmente ligado**: o disparo verifica `canal.ativo`, `categorias_permitidas` (compara com `produto.nicho`; lista vazia/null = aceita qualquer nicho), `desconto_minimo` do canal (recalculado a partir do preço real do produto) e `intervalo_minimo_minutos` (consulta o último envio bem-sucedido nesse canal em `disparos`).
+- **Deduplicação real implementada** (seção 3.3 do doc original): `produtos.hash_conteudo` (sha1 de título+preço+url**+nicho**) com `ON CONFLICT DO NOTHING` — captura repetida no mesmo nicho não duplica, mas o mesmo produto real pode existir em nichos diferentes (ex.: "tecnologia" e "geral") de propósito.
+
+### 2.7 Escuta de grupos de terceiros (Telegram) — cupons
+
+- **Retomado a pedido do usuário** (estava explicitamente adiado desde a seção 2.1/6 originais — "não retomar sem o usuário pedir"). Escopo bem menor que o item 7 do roadmap original: só Telegram, só leitura (sem parser por LLM), sem WhatsApp por enquanto.
+- **Fonte**: grupos de terceiros (não administrados pelo usuário) que postam listas de cupons do Mercado Livre. Formato real do post (confirmado pelo usuário, sempre igual): vários blocos `🚨 CODIGO 👉 XX% OFF` + `🔗 link bit.ly` + `(Min. R$ YY) Cupom disponível até DD/MM/AA...`, às vezes com foto (banner genérico do ML), às vezes só texto.
+- **Múltiplos grupos monitorados ao mesmo tempo** (evoluiu de "1 grupo só" pra uma lista — ver seção 2.8, motivo foi precisar monitorar também grupos de produto/terceiros, não só o de cupons). Um único listener MTProto cobre todos (filtro `chats` do GramJS aceita array), guardado em `configuracoes.telegram_listener_grupos` (JSON). Migração automática do campo antigo de grupo único (`telegram_listener_grupo_id`) na primeira leitura, sem passo manual.
+- **Por que não dá pra usar a Bot API**: o usuário só é *membro* desse grupo, não admin, e não é ele quem controla um bot lá dentro — a Bot API só lê grupos onde o próprio bot foi adicionado como admin. Única saída é **MTProto** (`telegram` — GramJS, pacote arquivado mas ainda funcional; existe um fork mantido `teleproto` caso GramJS pare de funcionar no futuro), logando como a **conta pessoal** do usuário (número de telefone dedicado pra isso, não o número principal).
+- **Login em duas ou três etapas, direto pelo painel** (aba Status → card "Monitor de cupons"): telefone → código recebido no Telegram → senha de 2FA (só se a conta tiver). Implementado via chamadas RPC de baixo nível do GramJS (`client.sendCode`, `client.invoke(new Api.auth.SignIn(...))`, `client.signInWithPassword(...)`) porque a lib só oferece um fluxo alto-nível pensado pra prompt de terminal (`client.start()`), incompatível com um formulário web em múltiplas requisições.
+- **Sessão persistida no Postgres** (tabela `configuracoes`, chave `telegram_listener_sessao`), não em arquivo — mesma tabela genérica chave/valor já usada pra `desconto_minimo` etc. Ao reiniciar o servidor (`retomarSeConfigurado` em `iniciar.ts`), reconecta e volta a escutar sozinho sem precisar logar de novo, contanto que a sessão continue válida.
+- **Não é um "produto"**: um post desse grupo traz vários cupons genéricos juntos (sem título/preço/imagem por item, "produtos selecionados" é vago demais pra virar um nicho). Por isso **não usa a tabela `produtos`** — tabelas novas e paralelas `cupons_capturados` (dedup por hash do texto) e `cupons_disparos` (histórico por canal, mesmo padrão de `disparos`). Consequência: **não tem filtro de nicho/desconto** nem passa pelo `removerTodos()` da captura do ML — os dois fluxos não se tocam.
+- **Disparo automático direto** (decisão do usuário, sem revisão manual): mensagem nova → dedup por hash → repassa pra **todos os canais ativos** (Telegram e WhatsApp), respeitando só `intervalo_minimo_minutos` de cada canal como anti-spam. Sem filtro de nicho/categoria porque esse conteúdo não tem categoria — se no futuro fizer sentido escolher quais canais recebem cupom, precisa de um campo novo por canal (não existe ainda).
+- **Imagem sempre é um banner fixo local** (`src/assets/imgs/MLimg.jpeg`, fornecido pelo usuário), nunca a imagem original do post monitorado — pedido explícito do usuário ("pegue apenas o texto"). Como o painel roda só em `localhost` (não é alcançável publicamente, e queremos manter assim), não dá pra mandar uma URL local pro Telegram/WhatsApp buscarem — em vez disso o arquivo é enviado direto: **multipart/form-data** pra Bot API do Telegram (`enviarFotoLocalComLegenda`), **base64 puro sem prefixo `data:`** pra Evolution API (confirmado lendo o código-fonte dela, `whatsapp.baileys.service.ts`, que faz `Buffer.from(media, 'base64')` direto quando a string não é uma URL).
+- **Limite de legenda**: Bot API do Telegram documenta 1024 caracteres pra `caption` de mídia. Um post com muitos cupons juntos pode passar disso — nesse caso manda a foto sem legenda e o texto completo como mensagem separada logo em seguida (`enviarTexto`), em vez de truncar e cortar cupom no meio. Mesmo limite aplicado por precaução no envio pro WhatsApp (Evolution/Baileys não documenta um limite explícito).
+- **Escolha de grupos pelo painel**: depois de conectar, botão "Grupos monitorados" lista os grupos/canais que a conta participa (`client.getDialogs()`) com checkbox por grupo (pré-marcados os já monitorados) e "Salvar seleção" — sem precisar descobrir/copiar ID manualmente. Suporta marcar vários de uma vez.
+- **Legenda reformatada, não repassada crua** (mudou depois do primeiro teste real): `src/servicos/parsearCupons.ts` extrai por regex os cupons da mensagem de origem e remonta num formato fixo (`*NOVOS CUPONS MERCADO LIVRE*` + por cupom `⚠️ cupom: CODIGO 🎫` / desconto + rodapé fixo + link). **Nunca usa o link do post original** (aponta pra afiliado de quem administra aquele grupo) — sempre usa o link fixo configurável na aba Configurações (`configuracoes.link_cupom_fixo`, ex.: a lista de recomendações `meli.la` do próprio usuário). Se a mensagem não tiver nenhum cupom reconhecível, **não dispara nada** — melhor não mandar do que mandar mal formatado. Se o link fixo não estiver configurado, o cupom é capturado (dedup) mas não repassado, com aviso no log.
+  - **Dois formatos reconhecidos** (achado um segundo formato real depois de conectar o WhatsApp, grupo "REI DA PROMO" — ver seção 2.10): **Formato A** (grupo original do Telegram) — `CODIGO 👉 XX% OFF` + `(Min. R$ YY)` numa linha próxima, desconto sempre em porcentagem. **Formato B** (grupo do WhatsApp, e coincide com o formato que o usuário pediu originalmente) — `cupom: CODIGO` numa linha (sem 👉) + `R$X OFF em R$Y+` (desconto em reais fixo) **ou** `XX% OFF em R$Y+` (percentual) na linha seguinte. `CupomExtraido` agora tem `percentual` E `valorFixo`, ambos `number | null` — só um dos dois vem preenchido por cupom, e `formatarLegendaCupons` mostra o que existir (`R$X OFF em R$Y+` ou `XX% OFF em R$Y+`). Testado: cupom de card de produto único (ex. "cupom: OFERTASML" sem linha de desconto tipo lista logo depois) continua **não** sendo classificado como lista — só vira "lista de cupons" se achar código + linha de desconto correspondente próxima.
+
+### 2.8 Escuta de grupos de terceiros (Telegram) — produtos individuais
+
+- **Pedido do usuário**: além de grupos que postam lista de cupons genéricos (seção 2.7), também monitorar grupos que postam **card de produto individual** (foto + título + preço + às vezes cupom + link), pra repassar pros canais próprios com o **link de afiliado do próprio usuário** no lugar do link original, preservando o cupom quando existir.
+- **Mesmo listener, mesma lista de grupos monitorados** da seção 2.7 — não tem "tipo de grupo" configurado. Cada mensagem nova de qualquer grupo monitorado passa pelo orquestrador `src/servicos/processarMensagemGrupo.ts`: tenta primeiro como lista de cupons (`extrairCupons`, padrão rígido); se não bater nenhum, tenta como card de produto (`extrairProdutoCard`). Os dois formatos são estruturalmente bem diferentes (um não tem link+preço por item, o outro tem), risco de confundir um pelo outro é baixo.
+- **Nunca confia no título/preço/imagem do texto do post nem na foto anexada** (pedido explícito do usuário: "não pegue a imagem, extraia a imagem pelo link do produto, pq às vezes essas imagens vêm com logo dos outros canais"). `src/servicos/parsearProdutoCard.ts` só extrai da mensagem o **link** e o **cupom** (regex `cupom:? CODIGO`) — nada além disso.
+- **Só processa link do Mercado Livre** (pedido explícito do usuário: "normalmente vem com meli no link") — `extrairProdutoCard` só aceita URL contendo `meli`, `mercadolivre` ou `mercadolibre` (cobre tanto o link curto oficial `meli.la/...` quanto o link direto do produto, que não tem "meli" literal no domínio — achado testando, adicionado por conta própria pra não perder link válido). Link de outro site (Amazon, Shopee, etc.) é descartado ali mesmo, nem chega a abrir o Chrome.
+- **Resolve o link e busca os dados reais na própria página do produto**: `src/integracoes/mercadoLivre/produtoScraper.ts` — `resolverUrlFinal()` segue redirects (bit.ly, mercadolivre.com/sec/...) navegando de verdade pela janela do Chrome autenticada (`fetch()` puro leva 403 do ML, mesmo bloqueio já documentado na seção 2.1, então não dá pra resolver com uma request HTTP simples); depois `buscarDadosProduto()` abre a página do produto (aba nova, não mexe na aba do link builder) e extrai título/preço/imagem reais via seletores da PDP do ML (`h1.ui-pdp-title`, `.ui-pdp-price__second-line .andes-money-amount`, `.ui-pdp-gallery__figure img`) — confirmados testando contra uma página real. Se a URL resolvida não for uma página de produto reconhecível (ex.: caiu numa categoria/listagem), `buscarDadosProduto` devolve `null` e a mensagem é ignorada.
+- **Reaproveita 100% o pipeline de produtos que já existe** — diferente do fluxo de cupons genéricos (seção 2.7), esse conteúdo tem exatamente a cara de um produto (título+preço+imagem+cupom+link), então cai direto na tabela `produtos` (`produtosRepo.inserirSeNovo`, `fonte = "telegram_terceiros"`, `nicho = "geral"`) — mesma dedup por hash, mesma tabela que a captura do ML já usa. **Não foi construído nenhum disparo novo**: o usuário pediu "automático", e como o disparo automático (`agendadorDisparo.ts`) já roda a cada 1 min pegando o produto `capturado` mais antigo por canal elegível, o produto capturado aqui **cai sozinho na fila existente** — o link de afiliado é gerado na hora do disparo (mesmo Chrome/link builder de sempre), não na captura.
+- **`nicho = "geral"` fixo**: mensagem de grupo de terceiros não vem com categoria real do ML (diferente da captura por categoria da aba Ofertas) — não dá pra classificar em tecnologia/beleza/moda/etc. automaticamente. Canal que só aceita `"geral"` (categorias_permitidas vazio) recebe; canal com categorias específicas só recebe se `"geral"` estiver na lista.
+- **Extraído `parsePreco()` pra um util compartilhado** (`src/integracoes/mercadoLivre/parsePreco.ts`) — antes vivia só dentro de `ofertasScraper.ts`, agora os dois scrapers usam a mesma função.
+- **Fura a fila do disparo automático** (pedido explícito do usuário — promoção de grupo monitorado é mais sensível a tempo que a captura em lote do ML): `produtosRepo.listarPorNichos` ordena por `(fonte = 'telegram_terceiros') DESC, criado_em ASC` em vez de só `criado_em ASC` — produto vindo de grupo monitorado do Telegram sempre sai antes de qualquer produto do ML, não importa a ordem de captura; entre produtos da mesma fonte continua FIFO normal. Escopo confirmado com o usuário: só produtos do Telegram furam fila, a captura do ML entre si não muda.
+- Testado ponta a ponta com uma mensagem sintética (card + cupom + link real de produto): capturou o produto certo, preço e imagem batendo com a página real, cupom preservado — e entrou na fila do disparo automático normalmente, na frente dos produtos do ML já capturados.
+
+### 2.9 Escuta de grupos de terceiros (WhatsApp) — cupons e produtos
+
+- **Pedido do usuário**: estender o mesmo monitoramento (cupons + card de produto, seções 2.7/2.8) pra grupos do **WhatsApp**, não só Telegram. Diferente do Telegram (MTProto, listener direto), WhatsApp via Evolution API é **webhook**: a Evolution nos avisa por HTTP quando chega mensagem nova, não é algo que a gente fica "escutando" ativamente.
+- **`configurarWebhook()`** (`src/integracoes/evolutionApi/instancia.ts`) chama `POST /webhook/set/{instancia}` da Evolution API configurando o evento `MESSAGES_UPSERT` — chamado toda subida do servidor (`iniciar.ts`), idempotente.
+- **Problema de rede resolvido**: a Evolution roda dentro do Docker, o painel roda fora (`npm run ui` direto no host) — o container não alcança `localhost:3400` do host (isso seria o próprio container). Adicionado `extra_hosts: host.docker.internal:host-gateway` no serviço `evolution-api` do `docker-compose.yml` (padrão portável no Linux desde Docker 20.10, testado e confirmado que resolve e alcança o painel). Webhook configurado aponta pra `http://host.docker.internal:3400/api/whatsapp/webhook`.
+- **Rota do webhook** (`POST /api/whatsapp/webhook`, `src/servidor/rotas/whatsapp.ts`): responde `200` **na hora** e processa em segundo plano (a extração/scraping pode demorar bem mais que o timeout que a Evolution espera de resposta). Ignora mensagem `fromMe: true` (senão qualquer coisa que a gente mesmo dispara nesse grupo viraria "captura", loop). Só processa `remoteJid` terminado em `@g.us` (grupo) e que esteja na lista de grupos monitorados (`configuracoes.whatsapp_grupos_monitorados`). Extrai texto de `data.message.conversation` (texto puro) ou `.imageMessage.caption`/`.videoMessage.caption` (mídia com legenda) — payload real confirmado pesquisando o código-fonte da Evolution (`whatsapp.baileys.service.ts`, função `prepareMessage()`).
+- **Sem checagem de `apikey` no webhook** (tentativa removida — ver seção 2.10): o campo `apikey` que vem no corpo do webhook é o **hash da instância** (gerado na criação, tipo `"28D7CA35-..."`), não a `EVOLUTION_API_KEY` global — comparar contra essa última rejeita todo webhook real.
+- **Seleção de grupos monitorados pelo painel** (card WhatsApp, aba Status → botão "Grupos monitorados"): mesmo padrão de checkbox do Telegram (seção 2.7), lista os grupos que a instância participa (`listarGrupos()`, já existia pra descobrir JID de canal de destino) e marca quais monitorar. É uma lista separada da do Telegram — `configuracoes.whatsapp_grupos_monitorados` (JSON), independente de `configuracoes.telegram_listener_grupos`.
+- **`origem` (Telegram/WhatsApp) agora é parâmetro explícito** em `processarMensagemGrupo(texto, origem, nicho)` e `processarProdutoDetectado(urlBruta, cupom, origem, nicho, textoOriginal)` — decide o `fonte` do produto capturado (`telegram_terceiros` vs `whatsapp_terceiros`). Ver seção 2.10 pra fila prioritária (mudou depois: hoje as duas fontes furam fila, não só Telegram).
+- **Limitação prática, igual ao Telegram**: só aparecem grupos que o número conectado na Evolution API **já participa** — pra monitorar um grupo de terceiros, precisa entrar nele primeiro com esse número.
+- Testado ponta a ponta com mensagem real do grupo monitorado chegando ao vivo (não simulada): capturou produto correto, `fonte = "whatsapp_terceiros"`, cupom preservado, nicho aplicado.
+
+### 2.10 Correções e features pedidas depois do primeiro teste real (Telegram + WhatsApp)
+
+Depois de conectar o monitor de verdade (seções 2.7-2.9), o usuário reportou que nenhum dos dois lados estava trazendo as promoções dos grupos monitorados. Investigação revelou **três bugs reais distintos** (nenhum dos dois monitoramentos funcionava de fato antes desta seção, apesar dos testes simulados terem passado):
+
+1. **Listener ao vivo do Telegram não entregava evento nenhum.** Testado isoladamente: conectado, **sem filtro nenhum** de grupo (`NewMessage({})`, catch-all), 90 segundos de espera, grupo conhecido postando a cada 1-3min — **zero eventos**. Não era problema de formato do ID do grupo nem do filtro `chats` (ambos investigados e descartados via leitura do código-fonte do GramJS) — o `client.addEventHandler` simplesmente não disparava nesse processo de longa duração. **Solução: trocado de evento ao vivo pra polling.** `src/integracoes/telegramListener/cliente.ts` perdeu `escutarGrupos`/`NewMessage`/`retomarSeConfigurado` e ganhou `verificarNovasMensagens()`, chamada a cada 45s por `src/servidor/agendadorMonitorTelegram.ts` (mesmo padrão do `agendadorDisparo.ts`). Usa `client.getMessages(grupoId, {minId, limit})` — comprovadamente confiável em todos os testes — guardando o último ID de mensagem processado por grupo em `configuracoes.telegram_listener_ultimos_ids` (JSON `{grupoId: id}`). Primeira vez que um grupo é visto, só grava o ID atual como baseline, sem processar histórico (mantém o "sem backfill" de sempre). **Confirmado funcionando com mensagem real ao vivo.**
+2. **Link `meli.la` de afiliado não aponta pro produto.** O "Gerador de produtos recomendados" do ML gera link curto que resolve pra `/social/{usuario}` — o **perfil público do afiliado**, com várias recomendações (mesmo componente `.poly-card` da aba Ofertas), não uma página de produto (PDP). A maioria dos posts nos grupos monitorados usa exatamente esse tipo de link (o próprio afiliado que posta já gerou seu link antes de compartilhar). `buscarDadosProduto` (só reconhece PDP) sempre devolvia `null` pra esses casos, e a mensagem era descartada silenciosamente. **Solução**: nova função `buscarProdutoEmPerfilSocial(urlPerfil, textoOriginal)` em `produtoScraper.ts` — quando a busca direta falha, raspa todos os `.poly-card` da página resolvida e casa por **palavras em comum** (tokenizado, sem acento, ≥3 letras) entre o título de cada card e o texto original da mensagem, exigindo pelo menos 2 palavras batendo pra aceitar (evita escolher card errado). Usa o `href` do card encontrado (URL real do produto) e refaz a busca normal (`buscarDadosProduto`) nele. Testado contra um caso real (perfil com 17 cards) — achou o produto certo (2 palavras distintivas em comum: "essencial", "atrai"), não o primeiro card da lista (que era outro produto).
+3. **Webhook do WhatsApp rejeitava toda mensagem real silenciosamente.** A checagem de segurança comparava o campo `apikey` do payload do webhook contra `EVOLUTION_API_KEY` (a chave global) — mas esse campo, confirmado lendo os logs reais da Evolution, é o **hash da própria instância** (gerado na criação, ex. `"28D7CA35-..."`), um valor completamente diferente. Todo teste sintético anterior "passava" porque o próprio teste colocava a chave certa de propósito no payload — mensagem real nunca teria como bater. **Solução: checagem removida** (não tem outro valor confiável pra validar autenticidade do lado da Evolution hoje; endpoint fica sem verificação de origem por enquanto).
+
+Além dos bugs, novas features pedidas junto:
+
+- **Nicho configurável por grupo monitorado** (antes sempre fixo em `"geral"`): `configuracoes.telegram_listener_grupos` e `whatsapp_grupos_monitorados` viraram `{id, nicho}[]` em vez de `string[]` (migração automática do formato antigo, incluindo do formato ainda mais antigo de grupo único). UI: dropdown de nicho ao lado de cada checkbox de grupo marcado, tanto na lista de grupos do Telegram quanto do WhatsApp (aba Status). O nicho escolhido por grupo é o que o produto capturado dali recebe — permite, por exemplo, ter um grupo de perfumes indo pro nicho "perfumes" enquanto outro vai pro "geral".
+- **Fila prioritária expandida pra WhatsApp também** — `produtosRepo.listarPorNichos` furava fila só pra `fonte = 'telegram_terceiros'`; agora é `fonte IN ('telegram_terceiros', 'whatsapp_terceiros')`. Decisão do usuário: qualquer produto de grupo monitorado (não só Telegram) é sensível a tempo, deve furar fila igual.
+- **Filtro de origem na aba Produtos**: novo dropdown "Todas as origens / Mercado Livre / Grupos monitorados" (`produtosRepo.listar` aceita `fonte: "mercado_livre" | "monitorados"`). Card de produto também ganhou um badge indicando "Telegram" ou "WhatsApp" quando a origem é de grupo monitorado.
+
+Confirmado com dados reais (não testes sintéticos) depois de todas as correções: Telegram capturou um produto novo via polling, WhatsApp capturou um produto novo via webhook, ambos em paralelo, ambos com nicho/cupom corretos.
+
+---
+
+## 3. Arquitetura / arquivos
+
+```
+src/
+  config/         env.ts (segredos/infra), logger.ts, redis.ts
+  db/             pool.ts, migrate.ts (runner próprio), migrations/*.sql
+  queues/         index.ts (BullMQ — infra pronta, não usada pelo fluxo atual da UI)
+  types/          produto.ts (ProdutoBruto, FonteDeProdutos)
+  integracoes/
+    mercadoLivre/
+      auth.ts                      OAuth2 (authorization_code + refresh_token), tokens no Postgres — só usado pro status na UI hoje
+      autorizar.ts                  CLI pra autorizar uma vez (npm run meli:autorizar)
+      ofertasScraper.ts              buscarOfertasMercadoLivre(paginas) — raspa a aba Ofertas via CDP
+      linkBuilderAutomatizado.ts    Playwright/CDP — gera link meli.la real
+      produtoScraper.ts              resolverUrlFinal (segue redirect via Chrome), buscarDadosProduto (título/preço/imagem reais da PDP)
+      parsePreco.ts                  parsePreco(texto) — compartilhado entre ofertasScraper e produtoScraper
+    telegram/
+      bot.ts                        enviarFotoComLegenda / enviarFotoLocalComLegenda / enviarTexto
+    evolutionApi/
+      cliente.ts                    fetch com header apikey pra Evolution API
+      instancia.ts                  statusInstancia, obterQrCode, listarGrupos, configurarWebhook
+      bot.ts                        enviarFotoComLegenda / enviarFotoLocalComLegenda / enviarTexto
+    telegramListener/
+      cliente.ts                    MTProto (GramJS) — login em etapas, sessão no Postgres, listarDialogos, verificarNovasMensagens (polling, ver seção 2.10)
+    ollama/
+      gerarChamada.ts                gerarChamada(tituloProduto) — chama o Ollama local
+  linkAfiliado/    tipos.ts, cache.ts (comCache), linkMercadoLivre.ts, index.ts
+  legenda/         gerarLegenda.ts
+  assets/imgs/     MLimg.jpeg — banner fixo usado nos cupons repassados do Telegram
+  repositorios/    nichos.ts, configuracoes.ts, canais.ts, produtos.ts, disparos.ts, cupons.ts — acesso direto ao Postgres
+  servicos/        capturarProdutos.ts, dispararProduto.ts (canaisElegiveis, proximoProdutoElegivel, dispararParaCanal), repassarCupons.ts, parsearCupons.ts, parsearProdutoCard.ts, capturarProdutoTerceiro.ts, processarMensagemGrupo.ts (orquestrador: decide cupom vs produto) — lógica de negócio
+  servidor/
+    app.ts               Express app (monta /api/* + estático)
+    iniciar.ts           entrypoint (npm run ui) — sobe o Express, o agendador de disparo, o agendador do monitor de Telegram e configura o webhook da Evolution API (WhatsApp)
+    agendadorDisparo.ts  roda em loop (1x/min): por canal ativo, confere intervalo e dispara sozinho se tiver produto elegível
+    agendadorMonitorTelegram.ts  roda em loop (45s): verificarNovasMensagens em todo grupo monitorado do Telegram (polling — ver seção 2.10)
+    rotas/          status.ts, nichos.ts, configuracoes.ts, canais.ts, produtos.ts, disparoAutomatico.ts, whatsapp.ts, telegramListener.ts
+    public/         index.html, app.js, styles.css — frontend puro, sem build/framework
+  cli/
+    capturar.ts     equivalente de terminal do botão "Capturar agora" (npm run capturar)
+```
+
+Tabelas no Postgres: `produtos` (+ coluna `nicho`), `canais_destino`, `disparos`, `oauth_tokens`, `nichos`, `configuracoes`, `cupons_capturados`, `cupons_disparos`, `schema_migrations`.
+
+---
+
+## 4. Como montar isso do zero numa máquina nova
+
+```bash
+npm install
+npx playwright install chromium
+docker compose up -d          # Postgres + Redis
+npm run migrate               # cria schema + seed de nichos/config/1 canal
+npm run ui                    # sobe o painel em http://localhost:$PORTA_UI
+```
+
+Também precisa do **Ollama** instalado ([ollama.com](https://ollama.com)) rodando localmente, com o modelo baixado: `ollama pull qwen2.5:3b` (ou outro, ajustando `OLLAMA_MODELO` no `.env`) — usado só pra gerar a "chamada" de cada produto, não é essencial pro resto do sistema funcionar (se o Ollama não estiver rodando, o disparo segue sem a chamada, só loga um aviso).
+
+O `docker compose up -d` acima já sobe **Postgres + Redis + Evolution API** (WhatsApp) juntos — não tem passo manual separado pra Evolution além de gerar o `EVOLUTION_API_KEY` (ver tabela abaixo) e conectar pelo painel (aba Status → "Conectar", escaneia o QR).
+
+Copie o `.env` da máquina antiga **por fora do git** (nunca vai pro repositório — está no `.gitignore`). Ele contém só segredo/infra agora:
+
+| Variável | O que é |
+|---|---|
+| `DATABASE_URL`, `REDIS_URL`, `LOG_LEVEL`, `PORTA_UI` | Infra local |
+| `MELI_CLIENT_ID`, `MELI_CLIENT_SECRET`, `MELI_REDIRECT_URI`, `MELI_SITE_ID` | App OAuth em developers.mercadolivre.com.br. `MELI_REDIRECT_URI` precisa ser HTTPS com domínio de verdade (ML rejeita `localhost`) — usamos um link do `webhook.site` |
+| `TELEGRAM_BOT_TOKEN` | Bot via @BotFather |
+| `EVOLUTION_API_KEY` | Gerada por você (ex.: `openssl rand -hex 16`) — precisa ser o **mesmo valor** em `AUTHENTICATION_API_KEY` no `docker-compose.yml` (já referenciado via `${EVOLUTION_API_KEY}`, não precisa editar o compose) |
+| `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` | Credenciais de app em [my.telegram.org](https://my.telegram.org) (login com o número que vai monitorar o grupo, "API development tools", cria um app qualquer) — usadas pelo monitor de cupons (MTProto/GramJS), não confundir com `TELEGRAM_BOT_TOKEN` |
+
+Nichos, desconto mínimo e canais de destino **não estão mais no `.env`** — vêm do banco (seedados pela migration `003_ui.sql`) e são editáveis na UI.
+
+### O que NÃO transfere automaticamente (precisa refazer na máquina nova):
+
+1. **Token OAuth do Mercado Livre** (tabela `oauth_tokens`) — rodar `npm run meli:autorizar` de novo (imprime URL, autoriza, cola o `?code=...` de volta).
+2. **Sessão logada do Chrome pro gerador de link** — sem automação possível pro login (ver seção 2.2). Rodar manualmente:
+   ```bash
+   google-chrome --remote-debugging-port=9222 \
+     --user-data-dir="<caminho-do-projeto>/.playwright-ml-session" \
+     "https://www.mercadolivre.com.br/afiliados/linkbuilder#hub"
+   ```
+   Logar (com Google) e **deixar a janela aberta**. A aba Status da UI mostra se está conectado.
+3. **Sessão do WhatsApp** (volume Docker `evolution_instances` + Postgres `evolution-postgres`) — não migra sozinha pra máquina nova (a menos que você copie os volumes Docker junto). Se não copiar: aba Status → "Conectar" → escanear o QR de novo com o celular.
+4. **Sessão do monitor de Telegram** (fica no Postgres principal, tabela `configuracoes` — migra junto se você copiar o volume `divulga_pg_data`; se não copiar, só logar de novo pela aba Status → "Conectar", telefone → código → senha se tiver 2FA).
+
+---
+
+## 5. Comandos disponíveis
+
+```bash
+npm run docker:up / docker:down     # sobe/derruba Postgres+Redis
+npm run migrate                      # aplica migrations pendentes
+npm run meli:autorizar               # autoriza (ou renova) o OAuth do ML
+npm run ui                           # sobe o painel web (Express + frontend estático)
+npm run capturar                     # equivalente de terminal do botão "Capturar agora"
+```
+
+Atenção: a porta padrão do painel (`PORTA_UI`) é **3400**, não 3000 — nessa máquina de desenvolvimento a 3000 já estava ocupada por um processo Python não relacionado ao projeto.
+
+---
+
+## 6. Próximos passos (roadmap original, seção 5)
+
+Já feito: Fundação (1), Captura Mercado Livre (2), Link de afiliado (3), "Geração de arte" → virou Geração de Legenda (4), Bot do Telegram + MVP ponta a ponta (5), Motor de Regras básico (6, via canais_destino + UI), Deduplicação (3.3), Painel web cobrindo tudo isso, Integração com WhatsApp via Evolution API (8, envio pra grupos próprios — ver seção 2.5), **7. Escuta de grupos de terceiros — Telegram (MTProto, seções 2.7/2.8) e WhatsApp (webhook Evolution API, seção 2.9), cupons e produtos individuais nos dois**.
+
+Ainda não feito, na ordem do documento original:
+- O Parser/Normalização com LLM (seção 3.2 do doc original) continua sem uso — o monitor de cupons extrai código/desconto/mínimo com **regex simples** (`parsearCupons.ts`), não precisou de LLM porque o formato dos grupos monitorados é consistente o bastante.
+- **Shopee** — **pausado**: usuário já é afiliado, mas o acesso à API oficial (App ID + Secret Key da Shopee Affiliate Open API) precisa ser solicitado à Shopee e ainda está aguardando aprovação. Retomar quando as credenciais chegarem.
+- **Observabilidade** — só logs via pino hoje, sem métricas.
+- **Captura agendada/automática** (diferente de disparo automático, que já existe — ver seção 1) — chegou a ser implementada (agendador em processo, configurável) mas foi **explicitamente revertida a pedido do usuário**: captura continua só manual (botão/API). Não reintroduzir sem pedido explícito. O **disparo**, por outro lado, roda automaticamente sozinho (`agendadorDisparo.ts`) — não confundir os dois.
+
+---
+
+## 7. Cuidados / coisas pra não esquecer
+
+- Nunca colar segredo real (client_secret, bot token) no `.env.example` — só no `.env` (gitignorado).
+- A janela do Chrome logada precisa ficar aberta continuamente — **tanto a captura (raspagem da aba Ofertas) quanto o link de afiliado** dependem dela agora. Se cair, os dois falham (a captura lança erro, o disparo fica registrado como `falhou` em `disparos`).
+- Nunca chamar `browser.close()` numa conexão `connectOverCDP` a essa janela — é a sessão real do usuário, fechar a "conexão" pode fechar a janela de verdade (por isso a checagem de status em `servidor/rotas/status.ts` nunca fecha, só tenta conectar).
+- Nicho = **categorias reais do ML** (`categoria_ids`, tipo `MLB1246`), não mais palavra-chave. Editável na aba Nichos; instrução de como descobrir o ID está na própria UI.
+- Cada captura **apaga a tabela `produtos` inteira** (todos os status, inclusive `enviado`) antes de inserir a nova leva (`produtosRepo.removerTodos()`) — o histórico de `disparos` some junto, por causa do `ON DELETE CASCADE` (migration `004`).
+- Porta padrão do painel é 3400 (não 3000) — ver seção 5.
+- Se o layout da aba Ofertas do Mercado Livre mudar (classes CSS `.poly-card`, `.poly-component__title`, etc.), o scraper (`ofertasScraper.ts`) quebra silenciosamente (retorna 0 ofertas) — não é algo sob nosso controle, só ajustar os seletores se acontecer.
+- A listagem de produtos na API/UI tem limite de 1000 linhas (era 200, mas o volume aumentou muito com a captura por categoria).
+- **Sempre usar `TIMESTAMPTZ`** em qualquer coluna nova de data/hora — nunca `TIMESTAMP` puro. O host roda em UTC-3 e o Postgres em UTC; sem fuso na coluna, a leitura via `pg` fica ~3h errada (ver seção 1, "bug de fuso horário corrigido").
+- Canal com `categorias_permitidas` vazio/null aceita **só** produtos do nicho `"geral"` agora — antes aceitava qualquer nicho. Quem quer um canal "recebe de todos os nichos" precisa listar todos explicitamente (não dá pra expressar isso com o campo vazio).
+- O disparo automático roda a cada 1 min verificando TODOS os canais ativos, mas cada disparo individual demora ~30-40s (gerar o link de afiliado passa pelo Chrome/Playwright) — não é instantâneo mesmo quando "na hora".

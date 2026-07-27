@@ -1,0 +1,38 @@
+{
+  "name": "divulga-links",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "migrate": "tsx src/db/migrate.ts",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "meli:autorizar": "tsx src/integracoes/mercadoLivre/autorizar.ts",
+    "capturar": "tsx src/cli/capturar.ts",
+    "ui": "tsx src/servidor/iniciar.ts"
+  },
+  "dependencies": {
+    "bullmq": "^5.34.0",
+    "dotenv": "^16.4.7",
+    "express": "^5.2.1",
+    "ioredis": "^5.4.2",
+    "pg": "^8.13.1",
+    "pino": "^9.6.0",
+    "pino-pretty": "^13.0.0",
+    "playwright": "^1.61.1",
+    "telegram": "^2.26.22"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.10.5",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}
