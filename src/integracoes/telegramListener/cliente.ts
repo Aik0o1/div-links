@@ -1,9 +1,15 @@
 import { TelegramClient, Api } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
+import { mkdir } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { requiredTelegramListenerConfig } from "../../config/env.js";
 import * as configuracoesRepo from "../../repositorios/configuracoes.js";
 import type { GrupoMonitoradoConfig } from "../../repositorios/configuracoes.js";
 import { logger } from "../../config/logger.js";
+
+const RAIZ_PROJETO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+const DIR_IMAGENS_CAPTURADAS = path.join(RAIZ_PROJETO, "data", "imagens-capturadas");
 
 // Conta pessoal "ouvinte" via MTProto (não é bot — só assim dá pra ler grupos
 // de terceiros onde não temos um bot admin). Ver PROJECT_STATUS.md seção 2.6.
@@ -46,6 +52,29 @@ function extrairTextoComLinksOcultos(msg: Api.Message): string | undefined {
     .map((e) => e.url);
 
   return linksOcultos.length > 0 ? `${texto}\n${linksOcultos.join("\n")}` : texto;
+}
+
+/**
+ * Devolve uma função que baixa a imagem da mensagem SÓ SE for chamada — o
+ * download real só acontece se algum caminho do pipeline precisar mesmo da
+ * imagem do post (hoje, só a captura de produto Shopee, ver
+ * capturarProdutoShopee.ts — o Mercado Livre sempre raspa a imagem da
+ * página real, nunca usa a do post). Evita baixar imagem à toa pra
+ * mensagens que não precisam dela.
+ */
+function criarBaixadorImagem(msg: Api.Message): () => Promise<string | undefined> {
+  return async () => {
+    if (!msg.photo) return undefined;
+    try {
+      await mkdir(DIR_IMAGENS_CAPTURADAS, { recursive: true });
+      const caminho = path.join(DIR_IMAGENS_CAPTURADAS, `${msg.id}.jpg`);
+      await msg.downloadMedia({ outputFile: caminho });
+      return caminho;
+    } catch (err) {
+      logger.warn({ err, msgId: msg.id }, "falha ao baixar imagem da mensagem, seguindo sem imagem");
+      return undefined;
+    }
+  };
 }
 
 export interface StatusListener {
@@ -155,7 +184,12 @@ const IDADE_MAXIMA_MS = 30 * 60 * 1000; // 30 minutos
  * backfill do histórico" que já era esperado no modelo antigo.
  */
 export async function verificarNovasMensagens(
-  aoReceberTexto: (texto: string, grupoId: string, nicho: string) => Promise<void>,
+  aoReceberTexto: (
+    texto: string,
+    grupoId: string,
+    nicho: string,
+    baixarImagem: () => Promise<string | undefined>,
+  ) => Promise<void>,
 ): Promise<void> {
   const grupos = await configuracoesRepo.obterTelegramListenerGrupos();
   if (grupos.length === 0) return;
@@ -194,7 +228,7 @@ export async function verificarNovasMensagens(
         const texto = extrairTextoComLinksOcultos(msg);
         if (texto) {
           try {
-            await aoReceberTexto(texto, grupo.id, grupo.nicho);
+            await aoReceberTexto(texto, grupo.id, grupo.nicho, criarBaixadorImagem(msg));
           } catch (err) {
             logger.error({ err, grupoId: grupo.id }, "falha ao processar mensagem de grupo monitorado");
           }

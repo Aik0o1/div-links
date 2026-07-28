@@ -1,6 +1,7 @@
 import { Router } from "express";
 import * as produtosRepo from "../../repositorios/produtos.js";
 import { capturarProdutos } from "../../servicos/capturarProdutos.js";
+import { capturarProdutosShopee } from "../../servicos/capturarProdutosShopee.js";
 import { canaisElegiveis, dispararParaCanal } from "../../servicos/dispararProduto.js";
 import { gerarChamada } from "../../integracoes/ollama/gerarChamada.js";
 import { logger } from "../../config/logger.js";
@@ -37,6 +38,16 @@ rotaProdutos.post("/capturar", async (_req, res) => {
     res.json(resultado);
   } catch (err) {
     logger.error({ err }, "falha ao capturar produtos");
+    res.status(500).json({ erro: (err as Error).message });
+  }
+});
+
+rotaProdutos.post("/capturar-shopee", async (_req, res) => {
+  try {
+    const resultado = await capturarProdutosShopee();
+    res.json(resultado);
+  } catch (err) {
+    logger.error({ err }, "falha ao capturar ofertas Shopee");
     res.status(500).json({ erro: (err as Error).message });
   }
 });

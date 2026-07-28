@@ -28,6 +28,8 @@ export interface NovoProduto {
   cupom?: string;
   nicho: string;
   precoNoPix?: boolean;
+  /** Só quando a fonte já entrega o link de afiliado pronto (ex.: `productOfferV2` da Shopee) — pula a geração no disparo. */
+  urlAfiliado?: string;
 }
 
 function paraProduto(row: any): ProdutoRow {
@@ -53,8 +55,15 @@ function paraProduto(row: any): ProdutoRow {
 // Inclui o nicho no hash de propósito: o mesmo produto real pode existir uma vez
 // por nicho (ex.: "tecnologia" e "geral" ao mesmo tempo), já que servem canais/públicos
 // diferentes. Só é duplicado de verdade se já existir NO MESMO nicho.
+//
+// NÃO inclui preço — chegou a incluir, mas causava duplicata real: se a mesma
+// url/mensagem fosse processada duas vezes (ex.: raspagem lenta demorando
+// mais que o intervalo do agendador) e uma das tentativas falhasse em
+// extrair o preço (concorrência por recursos do Chrome), o hash saía
+// diferente e a segunda tentativa não era pega como duplicada — postava a
+// mesma oferta duas vezes, uma delas sem preço nenhum.
 function calcularHash(produto: NovoProduto): string {
-  const base = `${produto.titulo}|${produto.precoPromocional ?? produto.precoOriginal ?? ""}|${produto.urlOriginal}|${produto.nicho}`;
+  const base = `${produto.titulo}|${produto.urlOriginal}|${produto.nicho}`;
   return createHash("sha1").update(base).digest("hex");
 }
 
@@ -63,8 +72,8 @@ export async function inserirSeNovo(produto: NovoProduto): Promise<ProdutoRow | 
   const hash = calcularHash(produto);
 
   const { rows } = await pool.query(
-    `INSERT INTO produtos (fonte, url_original, titulo, preco_original, preco_promocional, imagem_url, cupom, nicho, preco_no_pix, hash_conteudo)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    `INSERT INTO produtos (fonte, url_original, titulo, preco_original, preco_promocional, imagem_url, cupom, nicho, preco_no_pix, url_afiliado, hash_conteudo)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      ON CONFLICT (hash_conteudo) DO NOTHING
      RETURNING *`,
     [
@@ -77,6 +86,7 @@ export async function inserirSeNovo(produto: NovoProduto): Promise<ProdutoRow | 
       produto.cupom ?? null,
       produto.nicho,
       produto.precoNoPix ?? false,
+      produto.urlAfiliado ?? null,
       hash,
     ],
   );

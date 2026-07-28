@@ -1,8 +1,10 @@
 import { linkMercadoLivre } from "./linkMercadoLivre.js";
+import { linkShopee } from "./linkShopee.js";
 import type { GeradorDeLinkAfiliado } from "./tipos.js";
 
 const geradores: Record<string, GeradorDeLinkAfiliado> = {
   [linkMercadoLivre.plataforma]: linkMercadoLivre,
+  [linkShopee.plataforma]: linkShopee,
 };
 
 export function gerarLinkAfiliado(

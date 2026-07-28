@@ -4,8 +4,14 @@ import * as disparosRepo from "../repositorios/disparos.js";
 import * as configuracoesRepo from "../repositorios/configuracoes.js";
 import { gerarLinkAfiliado } from "../linkAfiliado/index.js";
 import { gerarLegenda } from "../legenda/gerarLegenda.js";
-import { enviarFotoComLegenda as enviarFotoTelegram } from "../integracoes/telegram/bot.js";
-import { enviarFotoComLegenda as enviarFotoWhatsapp } from "../integracoes/evolutionApi/bot.js";
+import {
+  enviarFotoComLegenda as enviarFotoTelegram,
+  enviarFotoLocalComLegenda as enviarFotoLocalTelegram,
+} from "../integracoes/telegram/bot.js";
+import {
+  enviarFotoComLegenda as enviarFotoWhatsapp,
+  enviarFotoLocalComLegenda as enviarFotoLocalWhatsapp,
+} from "../integracoes/evolutionApi/bot.js";
 import { gerarChamada } from "../integracoes/ollama/gerarChamada.js";
 import { calcularDesconto } from "./calcularDesconto.js";
 import { logger } from "../config/logger.js";
@@ -28,6 +34,11 @@ const NICHO_GERAL = "geral";
 // dele indefinidamente. Bug real: fila inteira travada por ~30min atrás de
 // um único produto de categoria não elegível pro programa de afiliados.
 const LIMITE_FALHAS = 3;
+
+/** `produto.fonte` diz de qual plataforma é o link original — cada fonte de captura só aceita link daquela plataforma. */
+function plataformaAfiliado(fonte: string): string {
+  return fonte.includes("shopee") ? "shopee" : "mercado_livre";
+}
 
 // Canal sem categorias definidas só aceita produtos do nicho "geral" — não "qualquer um".
 function nichoElegivel(canal: CanalRow, nichoProduto: string | null): boolean {
@@ -140,12 +151,12 @@ export async function dispararParaCanal(produtoId: number, canalId: number): Pro
   }
 
   try {
-    // `produto.fonte` é só rastreio de origem da captura ("mercado_livre" vs
-    // "telegram_terceiros", usado pra furar fila — ver listarPorNichos), não
-    // é a plataforma do link de afiliado. Hoje toda fonte é produto do ML
-    // (telegram_terceiros só aceita link mercadolivre.com.br/meli.la, ver
-    // parsearProdutoCard.ts), então a plataforma do gerador é sempre esta.
-    const linkAfiliado = await gerarLinkAfiliado("mercado_livre", produto.urlOriginal);
+    // Algumas fontes (ex.: captura de ofertas da Shopee via `productOfferV2`)
+    // já entregam o link de afiliado pronto na captura — reaproveita em vez
+    // de gerar de novo (evita chamada redundante à API e o link possivelmente
+    // ficar diferente do que já foi guardado).
+    const linkAfiliado =
+      produto.urlAfiliado ?? (await gerarLinkAfiliado(plataformaAfiliado(produto.fonte), produto.urlOriginal));
     const legenda = gerarLegenda({
       titulo: produto.titulo,
       chamada,
@@ -156,7 +167,18 @@ export async function dispararParaCanal(produtoId: number, canalId: number): Pro
       linkAfiliado,
     });
 
-    const enviar = canal.tipo === "telegram" ? enviarFotoTelegram : enviarFotoWhatsapp;
+    // Imagem de produto Shopee vem do post (baixada localmente, ver
+    // capturarProdutoShopee.ts), não é uma URL pública — usa a variante de
+    // envio de arquivo local nesse caso.
+    const ehImagemLocal = !/^https?:\/\//i.test(produto.imagemUrl);
+    const enviar =
+      canal.tipo === "telegram"
+        ? ehImagemLocal
+          ? enviarFotoLocalTelegram
+          : enviarFotoTelegram
+        : ehImagemLocal
+          ? enviarFotoLocalWhatsapp
+          : enviarFotoWhatsapp;
     await enviar(produto.imagemUrl, legenda, canal.identificadorGrupo);
 
     await disparosRepo.registrar(produtoId, canalId, "enviado");

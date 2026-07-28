@@ -776,6 +776,24 @@ document.getElementById("btn-capturar-agora").addEventListener("click", async ()
   }
 });
 
+document.getElementById("btn-capturar-shopee").addEventListener("click", async () => {
+  const botao = document.getElementById("btn-capturar-shopee");
+  const resultado = document.getElementById("resultado-captura");
+  botao.disabled = true;
+  botao.textContent = "Capturando...";
+  resultado.textContent = "";
+  try {
+    const r = await api("/produtos/capturar-shopee", { method: "POST" });
+    resultado.textContent = `Shopee: ${r.novos} produto(s) novo(s), ${r.duplicados} já existente(s) (de ${r.total} ofertas encontradas).`;
+    carregarProdutos();
+  } catch (err) {
+    resultado.textContent = `Erro: ${err.message}`;
+  } finally {
+    botao.disabled = false;
+    botao.textContent = "Capturar ofertas Shopee";
+  }
+});
+
 document.getElementById("btn-limpar-produtos").addEventListener("click", async () => {
   if (!confirm("Apagar TODOS os produtos (inclusive já enviados e o histórico de disparos deles)? Essa ação não pode ser desfeita.")) {
     return;

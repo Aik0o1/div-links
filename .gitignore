@@ -5,6 +5,10 @@ dist/
 .playwright-ml-session/
 .playwright-shopee-session/
 
+# Imagens baixadas de posts de grupo monitorado (produto Shopee) — dado
+# dinâmico, não é asset do projeto.
+data/imagens-capturadas/
+
 # Screenshots soltos usados durante o desenvolvimento — tinham número de
 # telefone real e nome completo visíveis, não fazem parte do projeto.
 image.png

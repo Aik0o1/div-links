@@ -35,6 +35,10 @@ export const env = {
     apiId: process.env.TELEGRAM_API_ID,
     apiHash: process.env.TELEGRAM_API_HASH,
   },
+  shopee: {
+    appId: process.env.SHOPEE_APP_ID,
+    secret: process.env.SHOPEE_SECRET,
+  },
 };
 
 export function requiredMeliConfig() {
@@ -71,4 +75,12 @@ export function requiredTelegramListenerConfig() {
     );
   }
   return { apiId: Number(apiId), apiHash };
+}
+
+export function requiredShopeeConfig() {
+  const { appId, secret } = env.shopee;
+  if (!appId || !secret) {
+    throw new Error("Configuração da Shopee incompleta: defina SHOPEE_APP_ID e SHOPEE_SECRET no .env");
+  }
+  return { appId, secret };
 }

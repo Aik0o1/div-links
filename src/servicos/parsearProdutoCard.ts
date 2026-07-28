@@ -33,6 +33,12 @@ function paraNumero(texto: string): number {
   return Number(texto.replace(/\./g, "").replace(",", "."));
 }
 
+/** Pega a linha inteira que menciona cupom, do jeito que foi escrita (ver comentário em REGEX_LINHA_CUPOM). */
+export function extrairLinhaCupom(texto: string): string | null {
+  const linha = texto.split("\n").find((l) => REGEX_LINHA_CUPOM.test(l));
+  return linha ? linha.trim() : null;
+}
+
 /**
  * Extrai o preço tal como anunciado no próprio post do grupo monitorado.
  * Pedido explícito do usuário: o produto deve ir pro disparo com o MESMO
@@ -94,8 +100,5 @@ export function extrairProdutoCard(texto: string): ProdutoCardDetectado | null {
 
   const urlBruta = urlMeli.replace(/[.,;!?)\]]+$/, "");
 
-  const linhaCupom = texto.split("\n").find((linha) => REGEX_LINHA_CUPOM.test(linha));
-  const cupom = linhaCupom ? linhaCupom.trim() : null;
-
-  return { urlBruta, cupom };
+  return { urlBruta, cupom: extrairLinhaCupom(texto) };
 }
