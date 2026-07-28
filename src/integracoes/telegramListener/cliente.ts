@@ -134,6 +134,14 @@ export async function definirGruposMonitorados(grupos: GrupoMonitoradoConfig[]):
   await configuracoesRepo.definirTelegramListenerGrupos(grupos);
 }
 
+// Mensagem mais velha que isso é ignorada (mas o cursor ainda avança até
+// ela, nunca mais é reconsiderada). Sem isso: se o painel fica fora do ar
+// por um tempo (ex.: de madrugada) e volta, `verificarNovasMensagens`
+// processa TODO o histórico acumulado desde a última mensagem vista como se
+// fosse novo — capturando produto/cupom postado horas atrás, já potencialmente
+// vencido/desatualizado. Bug real reportado pelo usuário.
+const IDADE_MAXIMA_MS = 30 * 60 * 1000; // 30 minutos
+
 /**
  * Checagem por polling (chamada periodicamente por um agendador, ver
  * servidor/agendadorMonitorTelegram.ts) — substituiu o listener de evento ao
@@ -174,6 +182,15 @@ export async function verificarNovasMensagens(
 
       const novasEmOrdem = [...novas].reverse(); // getMessages devolve mais nova primeiro
       for (const msg of novasEmOrdem) {
+        const idadeMs = Date.now() - msg.date * 1000;
+        if (idadeMs > IDADE_MAXIMA_MS) {
+          logger.debug(
+            { grupoId: grupo.id, msgId: msg.id, idadeMinutos: Math.round(idadeMs / 60000) },
+            "mensagem velha demais (sistema ficou fora do ar), ignorada sem processar",
+          );
+          continue;
+        }
+
         const texto = extrairTextoComLinksOcultos(msg);
         if (texto) {
           try {
