@@ -34,3 +34,11 @@ export async function ultimoEnvioGeralPorCanal(canalId: number): Promise<Date | 
   );
   return rows[0]?.ultimo ?? null;
 }
+
+export async function contarFalhas(produtoId: number): Promise<number> {
+  const { rows } = await pool.query(
+    `SELECT count(*) AS total FROM disparos WHERE produto_id = $1 AND status = 'falhou'`,
+    [produtoId],
+  );
+  return Number(rows[0].total);
+}

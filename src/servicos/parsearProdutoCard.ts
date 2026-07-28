@@ -1,5 +1,6 @@
 export interface ProdutoCardDetectado {
   urlBruta: string;
+  /** Linha inteira do post que menciona cupom, do jeito que foi escrita (ver extrairLinhaCupom). */
   cupom: string | null;
 }
 
@@ -10,22 +11,21 @@ export interface PrecosExtraidos {
 }
 
 const REGEX_URL = /(https?:\/\/[^\s]+)/g;
-// Aceita singular ("cupom: X") e plural ("cupons: X ou Y") — plural em
-// português troca o "m" por "ns", não é só acrescentar "s". No plural, com
-// mais de um código válido pro mesmo produto, pega só o primeiro (schema só
-// guarda um cupom por produto hoje). O rótulo "cupom"/"cupons" aceita
-// qualquer caixa, mas o CÓDIGO em si tem que ser maiúsculo — nos exemplos
-// reais o código sempre vem em CAPS (FASHION, MODACOMVC, PRASUACASA...).
-// Sem essa exigência, uma frase solta tipo "cupom esgotando" (aviso comum
-// nesses grupos, não é o código) era capturada como se "esgotando" fosse o
-// cupom; sem /i no fim, o texto continua a busca até achar o código de
-// verdade mais adiante na mensagem (ex.: "⚠️ cupom: FASHION").
-const REGEX_CUPOM = /(?:[Cc]upo(?:m|ns)|CUPO(?:M|NS)):?\s*([A-Z0-9]{3,20})/;
-// "De: 886 | Por: R$372" (preço original + promocional) ou só "Por: R$56"
-// (sem original — post só destaca o preço final). O grupo extra no fim
-// captura o resto da linha, só pra checar se tem "pix" logo depois do valor
-// (ver REGEX_PIX abaixo) — não entra no valor numérico.
-const REGEX_PRECO_DE_POR = /De:?\s*R?\$?\s*([\d.,]+)\s*\|\s*Por:?\s*R?\$?\s*([\d.,]+)([^\n]*)/i;
+// O formato da frase de cupom varia demais entre grupos ("cupom: X",
+// "cupons: X ou Y", "cupom de XX% OFF X no anúncio", e provavelmente outros
+// que ainda vão aparecer) — em vez de tentar estruturar só o CÓDIGO com
+// regex (frágil, precisa de ajuste a cada formato novo — já corrigimos um
+// bug de código minúsculo sendo capturado por engano, "cupom esgotando"),
+// pega a linha inteira que menciona "cupom"/"cupons" e repassa ela do jeito
+// que foi escrita na legenda enviada pro canal do usuário (ver
+// gerarLegenda.ts). Decisão explícita do usuário.
+const REGEX_LINHA_CUPOM = /cupo(?:m|ns)/i;
+// "De: 886 | Por: R$372" ou "De R$599,99 por R$359,99" (sem "|", só espaço
+// — outro formato real observado) ou só "Por: R$56" (sem original — post só
+// destaca o preço final). O "|" é opcional de propósito. O grupo extra no
+// fim captura o resto da linha, só pra checar se tem "pix" logo depois do
+// valor (ver REGEX_PIX abaixo) — não entra no valor numérico.
+const REGEX_PRECO_DE_POR = /De:?\s*R?\$?\s*([\d.,]+)\s*(?:\|\s*)?Por:?\s*R?\$?\s*([\d.,]+)([^\n]*)/i;
 const REGEX_PRECO_POR = /Por:?\s*R?\$?\s*([\d.,]+)([^\n]*)/i;
 const REGEX_PIX = /pix/i;
 
@@ -94,8 +94,8 @@ export function extrairProdutoCard(texto: string): ProdutoCardDetectado | null {
 
   const urlBruta = urlMeli.replace(/[.,;!?)\]]+$/, "");
 
-  const matchCupom = texto.match(REGEX_CUPOM);
-  const cupom = matchCupom ? matchCupom[1] : null;
+  const linhaCupom = texto.split("\n").find((linha) => REGEX_LINHA_CUPOM.test(linha));
+  const cupom = linhaCupom ? linhaCupom.trim() : null;
 
   return { urlBruta, cupom };
 }

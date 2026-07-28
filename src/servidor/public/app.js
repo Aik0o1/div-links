@@ -671,6 +671,7 @@ async function carregarProdutos() {
         </div>
         <button class="btn-ver-canais secundario">Ver canais elegíveis</button>
         <div class="canais-elegiveis" style="display:none"></div>
+        <button class="btn-apagar-produto perigo">Apagar</button>
       </div>
     </div>`,
     )
@@ -739,6 +740,16 @@ async function carregarProdutos() {
           }
         });
       });
+    });
+
+    card.querySelector(".btn-apagar-produto").addEventListener("click", async () => {
+      if (!confirm("Apagar esse produto? Não pode ser desfeito.")) return;
+      try {
+        await api(`/produtos/${id}`, { method: "DELETE" });
+        card.remove();
+      } catch (err) {
+        alert(`Falha ao apagar: ${err.message}`);
+      }
     });
   });
 }

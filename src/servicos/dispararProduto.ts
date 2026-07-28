@@ -20,6 +20,15 @@ export interface CanalComElegibilidade extends CanalRow {
 // Nicho especial que representa "sem filtro" (aba geral de Ofertas).
 const NICHO_GERAL = "geral";
 
+// Depois desse número de falhas, o produto é marcado "falhou" e some da
+// fila — sem isso, um produto com falha permanente (ex.: ML rejeita o link
+// de afiliado, "Este URL não é permitido pelo Programa") ficava sendo
+// retentado pra sempre a cada ciclo (é sempre o mais antigo "capturado",
+// então nunca sai da frente da fila) — bloqueando TODOS os produtos atrás
+// dele indefinidamente. Bug real: fila inteira travada por ~30min atrás de
+// um único produto de categoria não elegível pro programa de afiliados.
+const LIMITE_FALHAS = 3;
+
 // Canal sem categorias definidas só aceita produtos do nicho "geral" — não "qualquer um".
 function nichoElegivel(canal: CanalRow, nichoProduto: string | null): boolean {
   const permitidas = canal.categoriasPermitidas;
@@ -110,7 +119,14 @@ export async function dispararParaCanal(produtoId: number, canalId: number): Pro
     throw new Error(`Envio para canais do tipo "${canal.tipo}" ainda não implementado`);
   }
   if (!produto.titulo || !produto.imagemUrl) {
-    throw new Error("Produto sem título ou imagem, não é possível disparar");
+    // Condição permanente — nada preenche título/imagem depois da captura,
+    // então retentar nunca vai funcionar. Marca "falhou" na hora (não espera
+    // LIMITE_FALHAS) pra não travar a fila atrás de um produto que nunca vai
+    // conseguir ser disparado (mesmo bug do produto rejeitado pelo programa
+    // de afiliados, causa raiz diferente — aqui o `throw` acontece antes do
+    // try/catch que registra falha em disparos, então nunca contava).
+    await produtosRepo.atualizarStatus(produtoId, "falhou");
+    throw new Error("Produto sem título ou imagem, não é possível disparar — marcado como falhou");
   }
 
   let chamada = produto.chamada ?? undefined;
@@ -147,6 +163,16 @@ export async function dispararParaCanal(produtoId: number, canalId: number): Pro
     await produtosRepo.atualizarStatus(produtoId, "enviado", linkAfiliado);
   } catch (err) {
     await disparosRepo.registrar(produtoId, canalId, "falhou");
+
+    const falhas = await disparosRepo.contarFalhas(produtoId);
+    if (falhas >= LIMITE_FALHAS) {
+      await produtosRepo.atualizarStatus(produtoId, "falhou");
+      logger.warn(
+        { produtoId, falhas },
+        "produto desistido após falhas repetidas — não bloqueia mais a fila de disparo",
+      );
+    }
+
     throw err;
   }
 }

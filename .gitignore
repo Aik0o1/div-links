@@ -3,6 +3,7 @@ dist/
 .env
 *.log
 .playwright-ml-session/
+.playwright-shopee-session/
 
 # Screenshots soltos usados durante o desenvolvimento — tinham número de
 # telefone real e nome completo visíveis, não fazem parte do projeto.

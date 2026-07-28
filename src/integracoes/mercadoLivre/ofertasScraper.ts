@@ -34,7 +34,10 @@ async function extrairOfertasDaPagina(
   if (categoriaId) url.searchParams.set("category", categoriaId);
 
   try {
-    await pagina.goto(url.toString(), { waitUntil: "load", timeout: 20000 });
+    // Aba em background (ver paginaBackground.ts) — "domcontentloaded" em vez
+    // de "load", senão o Chrome throttling de abas em background impede o
+    // evento "load" completo de disparar a tempo sob uso real.
+    await pagina.goto(url.toString(), { waitUntil: "domcontentloaded", timeout: 20000 });
     await pagina.waitForSelector(".poly-card", { timeout: 10000 }).catch(() => {});
 
     return await pagina.locator(".poly-card").evaluateAll((cards: any[]) =>

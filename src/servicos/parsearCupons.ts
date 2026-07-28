@@ -3,6 +3,12 @@ export interface CupomExtraido {
   percentual: number | null;
   valorFixo: number | null;
   minimo: number | null;
+  /**
+   * Teto do desconto ("10% OFF limitado a R$10" = no máximo R$10 de
+   * desconto) — diferente de `minimo` (compra mínima pra ativar o cupom,
+   * "XX% OFF em R$Y+"). Semântica oposta, não pode ir no mesmo campo.
+   */
+  limiteDesconto: number | null;
 }
 
 // Formato A — observado no primeiro grupo monitorado (Telegram, "cupom
@@ -19,6 +25,19 @@ const REGEX_MINIMO_A = /Min\.\s*R\$\s*([\d.,]+)/i;
 const REGEX_FORMATO_B_CODIGO = /cupom:?\s*\*?([A-Z0-9]{3,20})\*?/i;
 const REGEX_FORMATO_B_VALOR_FIXO = /R\$\s*([\d.,]+)\s*OFF\s*em\s*R\$\s*([\d.,]+)\+/i;
 const REGEX_FORMATO_B_PERCENTUAL = /(\d{1,3})\s*%\s*OFF\s*em\s*R\$\s*([\d.,]+)\+/i;
+// Variante com teto de desconto em vez de compra mínima: "10% OFF limitado
+// a R$10" — sem "em"/sem "+" no final, significado oposto de minimo (ver
+// comentário em CupomExtraido).
+const REGEX_FORMATO_B_PERCENTUAL_LIMITADO = /(\d{1,3})\s*%\s*OFF\s*limitado\s*a\s*R\$\s*([\d.,]+)/i;
+
+// Formato C — vários cupons (um por categoria), todos com o MESMO percentual
+// e a MESMA compra mínima, ditos uma única vez no cabeçalho/rodapé da
+// mensagem em vez de repetidos por cupom: "🎟️ CUPOM DE 25% OFF..." no topo,
+// depois uma linha por categoria "🏠 Casa e Decoração 🎟️ 👉 USAESSAPROMO"
+// (código depois da seta, sem percentual na própria linha), e
+// "(Min. R$ 19) Cupons disponíveis..." no fim valendo pra todos.
+const REGEX_HEADER_PERCENTUAL_COMPARTILHADO = /CUPOM\s+DE\s+(\d{1,3})\s*%\s*OFF/i;
+const REGEX_CODIGO_APOS_SETA = /🎟️?\s*👉\s*([A-Z0-9]{3,20})/;
 
 function paraNumero(texto: string): number {
   return Number(texto.replace(/\./g, "").replace(",", "."));
@@ -28,6 +47,13 @@ export function extrairCupons(texto: string): CupomExtraido[] {
   const linhas = texto.split("\n");
   const resultado: CupomExtraido[] = [];
   const codigosVistos = new Set<string>();
+
+  // Formato C é compartilhado pra mensagem inteira — calcula uma vez só,
+  // fora do loop por linha (ver comentário acima de REGEX_HEADER_PERCENTUAL_COMPARTILHADO).
+  const matchHeaderC = texto.match(REGEX_HEADER_PERCENTUAL_COMPARTILHADO);
+  const matchMinimoC = texto.match(REGEX_MINIMO_A);
+  const percentualCompartilhado = matchHeaderC ? Number(matchHeaderC[1]) : null;
+  const minimoCompartilhado = matchMinimoC ? paraNumero(matchMinimoC[1]) : null;
 
   for (let i = 0; i < linhas.length; i++) {
     const matchA = linhas[i].match(REGEX_FORMATO_A);
@@ -45,7 +71,7 @@ export function extrairCupons(texto: string): CupomExtraido[] {
         }
       }
 
-      resultado.push({ codigo, percentual: Number(matchA[2]), valorFixo: null, minimo });
+      resultado.push({ codigo, percentual: Number(matchA[2]), valorFixo: null, minimo, limiteDesconto: null });
       codigosVistos.add(codigo);
       continue;
     }
@@ -63,6 +89,7 @@ export function extrairCupons(texto: string): CupomExtraido[] {
             percentual: null,
             valorFixo: paraNumero(matchValorFixo[1]),
             minimo: paraNumero(matchValorFixo[2]),
+            limiteDesconto: null,
           });
           codigosVistos.add(codigo);
           break;
@@ -74,6 +101,19 @@ export function extrairCupons(texto: string): CupomExtraido[] {
             percentual: Number(matchPercentual[1]),
             valorFixo: null,
             minimo: paraNumero(matchPercentual[2]),
+            limiteDesconto: null,
+          });
+          codigosVistos.add(codigo);
+          break;
+        }
+        const matchPercentualLimitado = linhas[j].match(REGEX_FORMATO_B_PERCENTUAL_LIMITADO);
+        if (matchPercentualLimitado) {
+          resultado.push({
+            codigo,
+            percentual: Number(matchPercentualLimitado[1]),
+            valorFixo: null,
+            minimo: null,
+            limiteDesconto: paraNumero(matchPercentualLimitado[2]),
           });
           codigosVistos.add(codigo);
           break;
@@ -82,6 +122,28 @@ export function extrairCupons(texto: string): CupomExtraido[] {
       // Se não achou linha de desconto nas próximas linhas, não é um cupom
       // de lista de verdade (provavelmente é o cupom de um card de produto
       // único, ver parsearProdutoCard.ts) — não adiciona nada.
+      continue;
+    }
+
+    // Formato C — só entra se achou o percentual compartilhado no cabeçalho
+    // (sem ele não dá pra saber o desconto desse código, e "undefined% OFF"
+    // na legenda de saída ficaria errado — melhor não adicionar do que
+    // adicionar errado).
+    if (percentualCompartilhado !== null) {
+      const matchSeta = linhas[i].match(REGEX_CODIGO_APOS_SETA);
+      if (matchSeta) {
+        const codigo = matchSeta[1].toUpperCase();
+        if (!codigosVistos.has(codigo)) {
+          resultado.push({
+            codigo,
+            percentual: percentualCompartilhado,
+            valorFixo: null,
+            minimo: minimoCompartilhado,
+            limiteDesconto: null,
+          });
+          codigosVistos.add(codigo);
+        }
+      }
     }
   }
 
@@ -97,6 +159,8 @@ export function formatarLegendaCupons(cupons: CupomExtraido[], linkFixo: string)
       linhas.push(
         cupom.minimo !== null ? `R$${cupom.valorFixo} OFF em R$${cupom.minimo}+` : `R$${cupom.valorFixo} OFF`,
       );
+    } else if (cupom.limiteDesconto !== null) {
+      linhas.push(`${cupom.percentual}% OFF limitado a R$${cupom.limiteDesconto}`);
     } else {
       linhas.push(
         cupom.minimo !== null ? `${cupom.percentual}% OFF em R$${cupom.minimo}+` : `${cupom.percentual}% OFF`,

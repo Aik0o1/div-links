@@ -138,6 +138,10 @@ export async function removerTodos(): Promise<void> {
   await pool.query("DELETE FROM produtos");
 }
 
+export async function remover(id: number): Promise<void> {
+  await pool.query("DELETE FROM produtos WHERE id = $1", [id]);
+}
+
 export async function atualizarStatus(
   id: number,
   status: string,

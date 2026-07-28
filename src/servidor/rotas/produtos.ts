@@ -41,6 +41,16 @@ rotaProdutos.post("/capturar", async (_req, res) => {
   }
 });
 
+rotaProdutos.delete("/:id", async (req, res) => {
+  try {
+    await produtosRepo.remover(Number(req.params.id));
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "falha ao apagar produto");
+    res.status(500).json({ erro: (err as Error).message });
+  }
+});
+
 rotaProdutos.get("/:id/canais-elegiveis", async (req, res) => {
   try {
     const canais = await canaisElegiveis(Number(req.params.id));

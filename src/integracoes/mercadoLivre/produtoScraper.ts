@@ -2,6 +2,15 @@ import { parsePreco } from "./parsePreco.js";
 import { abrirPaginaEmBackground } from "./paginaBackground.js";
 import { obterBrowser } from "./browserConexao.js";
 
+// Todas as navegações aqui usam `domcontentloaded`, não `load` — as abas são
+// abertas em background (ver paginaBackground.ts, pra não roubar o foco do
+// usuário), e o Chrome throttling forte o carregamento de recursos (imagens
+// etc.) de abas em background: sob uso real (várias capturas concorrentes),
+// o evento "load" completo simplesmente não disparava a tempo, dando
+// timeout em 100% das tentativas de captura de produto de grupo monitorado.
+// `domcontentloaded` (HTML parseado, sem esperar imagens) já é suficiente
+// pros seletores que usamos, que vêm do HTML inicial renderizado pelo ML.
+
 /**
  * Segue redirects (bit.ly, mercadolivre.com/sec/..., meli.la) via a janela
  * real do Chrome — igual o resto do sistema, `fetch()` puro leva 403 do ML.
@@ -10,7 +19,7 @@ export async function resolverUrlFinal(urlBruta: string): Promise<string> {
   const browser = await obterBrowser();
   const pagina = await abrirPaginaEmBackground(browser);
   try {
-    await pagina.goto(urlBruta, { waitUntil: "load", timeout: 20000 });
+    await pagina.goto(urlBruta, { waitUntil: "domcontentloaded", timeout: 20000 });
     return pagina.url();
   } finally {
     await pagina.close();
@@ -36,7 +45,7 @@ export async function buscarDadosProduto(url: string): Promise<DadosProdutoML | 
   const pagina = await abrirPaginaEmBackground(browser);
 
   try {
-    await pagina.goto(url, { waitUntil: "load", timeout: 20000 });
+    await pagina.goto(url, { waitUntil: "domcontentloaded", timeout: 20000 });
     await pagina.waitForSelector("h1.ui-pdp-title", { timeout: 8000 }).catch(() => {});
 
     const titulo = (await pagina.locator("h1.ui-pdp-title").textContent().catch(() => null))?.trim();
@@ -112,7 +121,7 @@ export async function buscarProdutoEmPerfilSocial(
   const pagina = await abrirPaginaEmBackground(browser);
 
   try {
-    await pagina.goto(urlPerfil, { waitUntil: "load", timeout: 20000 });
+    await pagina.goto(urlPerfil, { waitUntil: "domcontentloaded", timeout: 20000 });
     await pagina.waitForSelector(".poly-card", { timeout: 8000 }).catch(() => {});
 
     const cards = pagina.locator(".poly-card");
