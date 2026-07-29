@@ -97,7 +97,7 @@ export async function inserirSeNovo(produto: NovoProduto): Promise<ProdutoRow | 
 export async function listar(filtro?: {
   status?: string;
   nicho?: string;
-  fonte?: "mercado_livre" | "monitorados";
+  fonte?: "mercado_livre" | "shopee" | "monitorados";
 }): Promise<ProdutoRow[]> {
   const condicoes: string[] = [];
   const valores: string[] = [];
@@ -111,9 +111,13 @@ export async function listar(filtro?: {
     condicoes.push(`nicho = $${valores.length}`);
   }
   if (filtro?.fonte === "monitorados") {
-    condicoes.push(`fonte IN ('telegram_terceiros', 'whatsapp_terceiros')`);
+    condicoes.push(
+      `fonte IN ('telegram_terceiros', 'whatsapp_terceiros', 'telegram_shopee', 'whatsapp_shopee')`,
+    );
   } else if (filtro?.fonte === "mercado_livre") {
     condicoes.push(`fonte = 'mercado_livre'`);
+  } else if (filtro?.fonte === "shopee") {
+    condicoes.push(`fonte IN ('shopee', 'telegram_shopee', 'whatsapp_shopee')`);
   }
 
   const where = condicoes.length > 0 ? `WHERE ${condicoes.join(" AND ")}` : "";
@@ -125,14 +129,29 @@ export async function listar(filtro?: {
 }
 
 /** Mais antigo primeiro (FIFO), pra ciclar pelos produtos ao longo do tempo. */
-// Produtos de grupo monitorado (Telegram ou WhatsApp) furam a fila
-// (promoção/cupom costuma ser sensível a tempo) — vêm sempre antes dos
+// Produtos de grupo monitorado (Telegram ou WhatsApp, ML ou Shopee) furam a
+// fila (promoção/cupom costuma ser sensível a tempo) — vêm sempre antes dos
 // demais, mas entre si continuam FIFO (mais antigo primeiro). Produtos de
-// outras fontes (captura do ML) seguem FIFO entre si.
-export async function listarPorNichos(nichos: string[], status: string): Promise<ProdutoRow[]> {
+// outras fontes (captura em massa, ML ou Shopee) seguem FIFO entre si.
+//
+// `nichos: null` = sem filtro de nicho (canal "geral", sem categorias
+// definidas, aceita produto de qualquer nicho — ver nichoElegivel em
+// dispararProduto.ts).
+const FONTE_PRIORITARIA = "'telegram_terceiros', 'whatsapp_terceiros', 'telegram_shopee', 'whatsapp_shopee'";
+
+export async function listarPorNichos(nichos: string[] | null, status: string): Promise<ProdutoRow[]> {
+  if (nichos === null) {
+    const { rows } = await pool.query(
+      `SELECT * FROM produtos WHERE status = $1
+       ORDER BY (fonte IN (${FONTE_PRIORITARIA})) DESC, criado_em ASC`,
+      [status],
+    );
+    return rows.map(paraProduto);
+  }
+
   const { rows } = await pool.query(
     `SELECT * FROM produtos WHERE nicho = ANY($1) AND status = $2
-     ORDER BY (fonte IN ('telegram_terceiros', 'whatsapp_terceiros')) DESC, criado_em ASC`,
+     ORDER BY (fonte IN (${FONTE_PRIORITARIA})) DESC, criado_em ASC`,
     [nichos, status],
   );
   return rows.map(paraProduto);
@@ -165,4 +184,24 @@ export async function atualizarStatus(
 
 export async function atualizarChamada(id: number, chamada: string): Promise<void> {
   await pool.query("UPDATE produtos SET chamada = $2 WHERE id = $1", [id, chamada]);
+}
+
+/** Produtos capturados "hoje" (fuso America/Sao_Paulo), qualquer status — card do Dashboard. */
+export async function contarCapturadosHoje(): Promise<number> {
+  const { rows } = await pool.query(
+    `SELECT count(*) AS total FROM produtos
+     WHERE criado_em AT TIME ZONE 'America/Sao_Paulo' >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo')`,
+  );
+  return Number(rows[0].total);
+}
+
+/**
+ * Fila pendente — total agregado de produtos "capturado" esperando disparo.
+ * Não é por canal (reproduzir a elegibilidade de canal em SQL duplicaria a
+ * regra de negócio que já existe em dispararProduto.ts) — só um número geral
+ * pro card do Dashboard.
+ */
+export async function contarPendentes(): Promise<number> {
+  const { rows } = await pool.query(`SELECT count(*) AS total FROM produtos WHERE status = 'capturado'`);
+  return Number(rows[0].total);
 }

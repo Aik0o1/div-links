@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { requiredShopeeConfig } from "../../config/env.js";
+import { obterShopeeConfigEfetiva } from "./config.js";
 
 const ENDPOINT = "https://open-api.affiliate.shopee.com.br/graphql";
 
@@ -8,7 +8,7 @@ function assinar(appId: string, timestamp: number, payload: string, secret: stri
 }
 
 async function chamarGraphQL<T>(query: string): Promise<T> {
-  const { appId, secret } = requiredShopeeConfig();
+  const { appId, secret } = await obterShopeeConfigEfetiva();
   const timestamp = Math.floor(Date.now() / 1000);
   const payload = JSON.stringify({ query });
   const signature = assinar(appId, timestamp, payload, secret);

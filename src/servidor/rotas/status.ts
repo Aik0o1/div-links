@@ -6,11 +6,9 @@ import { pool } from "../../db/pool.js";
 import { redisConnection } from "../../config/redis.js";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
-import { statusToken } from "../../integracoes/mercadoLivre/auth.js";
 import { statusInstancia } from "../../integracoes/evolutionApi/instancia.js";
 import { statusListener } from "../../integracoes/telegramListener/cliente.js";
-import { obterBrowser } from "../../integracoes/mercadoLivre/browserConexao.js";
-import { obterBrowser as obterBrowserShopee } from "../../integracoes/shopee/browserConexao.js";
+import { chromeConectado, chromeShopeeConectado } from "../../servicos/statusSistema.js";
 
 export const rotaStatus = Router();
 
@@ -23,36 +21,8 @@ const PERFIL_CHROME_ML = path.join(RAIZ_PROJETO, ".playwright-ml-session");
 const PERFIL_CHROME_SHOPEE = path.join(RAIZ_PROJETO, ".playwright-shopee-session");
 const CDP_PORTA_SHOPEE = 9223;
 
-async function chromeConectado(): Promise<boolean> {
-  // Reaproveita a conexão CDP única do processo (ver browserConexao.ts) em
-  // vez de abrir uma nova a cada checagem de status — chamar
-  // chromium.connectOverCDP() direto aqui, sem nunca fechar, era uma fonte
-  // de vazamento de memória toda vez que o painel era recarregado.
-  try {
-    const conectado = await Promise.race([
-      obterBrowser().then(() => true),
-      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 2000)),
-    ]);
-    return conectado;
-  } catch {
-    return false;
-  }
-}
-
-async function chromeShopeeConectado(): Promise<boolean> {
-  try {
-    const conectado = await Promise.race([
-      obterBrowserShopee().then(() => true),
-      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 2000)),
-    ]);
-    return conectado;
-  } catch {
-    return false;
-  }
-}
-
 rotaStatus.get("/", async (_req, res) => {
-  const [db, redis, meli, chrome, chromeShopee, whatsapp, telegramListener] = await Promise.all([
+  const [db, redis, chrome, chromeShopee, whatsapp, telegramListener] = await Promise.all([
     pool
       .query("SELECT 1")
       .then(() => true)
@@ -61,7 +31,6 @@ rotaStatus.get("/", async (_req, res) => {
       .ping()
       .then(() => true)
       .catch(() => false),
-    statusToken().catch(() => ({ conectado: false, expiraEm: null })),
     chromeConectado(),
     chromeShopeeConectado(),
     statusInstancia().catch(() => ({ existe: false, conectado: false, estado: null })),
@@ -71,7 +40,6 @@ rotaStatus.get("/", async (_req, res) => {
   res.json({
     db,
     redis,
-    meli,
     telegram: { configurado: !!env.telegram.botToken },
     chrome: { conectado: chrome },
     chromeShopee: { conectado: chromeShopee },

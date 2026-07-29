@@ -42,3 +42,39 @@ export async function contarFalhas(produtoId: number): Promise<number> {
   );
   return Number(rows[0].total);
 }
+
+/** Total de disparos "hoje" (fuso America/Sao_Paulo) por status, pro card do Dashboard. */
+export async function contarHoje(status: "enviado" | "falhou"): Promise<number> {
+  const { rows } = await pool.query(
+    `SELECT count(*) AS total FROM disparos
+     WHERE status = $1 AND criado_em AT TIME ZONE 'America/Sao_Paulo' >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo')`,
+    [status],
+  );
+  return Number(rows[0].total);
+}
+
+export interface DisparosPorHora {
+  hora: number;
+  enviados: number;
+  falhas: number;
+}
+
+/** Disparos de hoje agrupados por hora (0-23, fuso America/Sao_Paulo) — preenche as 24 posições, mesmo sem disparo. */
+export async function porHoraHoje(): Promise<DisparosPorHora[]> {
+  const { rows } = await pool.query(
+    `SELECT
+       extract(hour FROM criado_em AT TIME ZONE 'America/Sao_Paulo')::int AS hora,
+       count(*) FILTER (WHERE status = 'enviado') AS enviados,
+       count(*) FILTER (WHERE status = 'falhou') AS falhas
+     FROM disparos
+     WHERE criado_em AT TIME ZONE 'America/Sao_Paulo' >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo')
+     GROUP BY hora`,
+  );
+
+  const porHora = new Map(rows.map((r) => [Number(r.hora), { enviados: Number(r.enviados), falhas: Number(r.falhas) }]));
+  return Array.from({ length: 24 }, (_, hora) => ({
+    hora,
+    enviados: porHora.get(hora)?.enviados ?? 0,
+    falhas: porHora.get(hora)?.falhas ?? 0,
+  }));
+}

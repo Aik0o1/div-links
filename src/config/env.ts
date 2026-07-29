@@ -13,12 +13,6 @@ export const env = {
   redisUrl: process.env.REDIS_URL ?? "redis://localhost:6379",
   logLevel: process.env.LOG_LEVEL ?? "info",
   portaUi: Number(process.env.PORTA_UI ?? "3000"),
-  meli: {
-    clientId: process.env.MELI_CLIENT_ID,
-    clientSecret: process.env.MELI_CLIENT_SECRET,
-    redirectUri: process.env.MELI_REDIRECT_URI,
-    siteId: process.env.MELI_SITE_ID ?? "MLB",
-  },
   telegram: {
     botToken: process.env.TELEGRAM_BOT_TOKEN,
   },
@@ -40,16 +34,6 @@ export const env = {
     secret: process.env.SHOPEE_SECRET,
   },
 };
-
-export function requiredMeliConfig() {
-  const { clientId, clientSecret, redirectUri } = env.meli;
-  if (!clientId || !clientSecret || !redirectUri) {
-    throw new Error(
-      "Configuração do Mercado Livre incompleta: defina MELI_CLIENT_ID, MELI_CLIENT_SECRET e MELI_REDIRECT_URI no .env",
-    );
-  }
-  return { clientId, clientSecret, redirectUri };
-}
 
 export function requiredTelegramConfig() {
   const { botToken } = env.telegram;
@@ -75,12 +59,4 @@ export function requiredTelegramListenerConfig() {
     );
   }
   return { apiId: Number(apiId), apiHash };
-}
-
-export function requiredShopeeConfig() {
-  const { appId, secret } = env.shopee;
-  if (!appId || !secret) {
-    throw new Error("Configuração da Shopee incompleta: defina SHOPEE_APP_ID e SHOPEE_SECRET no .env");
-  }
-  return { appId, secret };
 }

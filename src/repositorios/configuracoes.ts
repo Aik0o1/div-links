@@ -117,3 +117,18 @@ export async function obterChamadaIAAtiva(): Promise<boolean> {
 export async function definirChamadaIAAtiva(ativa: boolean): Promise<void> {
   await definir("chamada_ia_ativa", String(ativa));
 }
+
+export interface ShopeeConfig {
+  appId: string;
+  secret: string;
+}
+
+/** Credenciais da API de afiliados da Shopee, configuráveis pela UI (Config. Afiliados). */
+export async function obterShopeeConfig(): Promise<ShopeeConfig | null> {
+  const valor = await obter("shopee_config");
+  return valor ? (JSON.parse(valor) as ShopeeConfig) : null;
+}
+
+export async function definirShopeeConfig(config: ShopeeConfig): Promise<void> {
+  await definir("shopee_config", JSON.stringify(config));
+}

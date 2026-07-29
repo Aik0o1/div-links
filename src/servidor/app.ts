@@ -9,6 +9,7 @@ import { rotaProdutos } from "./rotas/produtos.js";
 import { rotaDisparoAutomatico } from "./rotas/disparoAutomatico.js";
 import { rotaWhatsapp } from "./rotas/whatsapp.js";
 import { rotaTelegramListener } from "./rotas/telegramListener.js";
+import { rotaDashboard } from "./rotas/dashboard.js";
 
 const DIRETORIO_PUBLIC = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -27,6 +28,7 @@ export function criarApp() {
   app.use("/api/disparo-automatico", rotaDisparoAutomatico);
   app.use("/api/whatsapp", rotaWhatsapp);
   app.use("/api/telegram-listener", rotaTelegramListener);
+  app.use("/api/dashboard", rotaDashboard);
 
   app.use(express.static(DIRETORIO_PUBLIC));
 
