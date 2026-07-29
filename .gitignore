@@ -5,6 +5,9 @@ dist/
 .playwright-ml-session/
 .playwright-shopee-session/
 
+# Build gerado pelo Vite (frontend/) — artefato, não fonte. Ver frontend/vite.config.ts.
+src/servidor/public/
+
 # Imagens baixadas de posts de grupo monitorado (produto Shopee) — dado
 # dinâmico, não é asset do projeto.
 data/imagens-capturadas/
