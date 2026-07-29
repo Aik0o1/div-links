@@ -113,6 +113,15 @@ export function CanalDialog({ aberto, onFechar, canal, nichos, onSalvo }: Props)
     }));
   }
 
+  // Atalho pro caso comum "só grupo monitorado" — equivalente a marcar só
+  // "Grupos monitorados" nos checkboxes de Origem abaixo, mas explícito em
+  // vez de depender do usuário perceber que deixar Mercado Livre/Shopee
+  // desmarcados é o que faz isso funcionar.
+  const soMonitorados = form.fontesSelecionadas.length === 1 && form.fontesSelecionadas[0] === "monitorados";
+  function alternarSoMonitorados(ativo: boolean) {
+    setForm((f) => ({ ...f, fontesSelecionadas: ativo ? ["monitorados"] : [] }));
+  }
+
   function alternarGrupo(id: string, marcado: boolean) {
     setForm((f) => ({
       ...f,
@@ -286,7 +295,18 @@ export function CanalDialog({ aberto, onFechar, canal, nichos, onSalvo }: Props)
 
             <div className="flex flex-col gap-1.5">
               <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Origem</span>
-              <div className="flex flex-col gap-1">
+
+              <label className="flex cursor-pointer items-start gap-2 rounded-md border bg-background p-2">
+                <Switch checked={soMonitorados} onCheckedChange={alternarSoMonitorados} className="mt-0.5" />
+                <span>
+                  <span className="block text-sm font-medium">Só grupos monitorados</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Nunca recebe captura em massa (Mercado Livre/Shopee), só produto de grupo monitorado.
+                  </span>
+                </span>
+              </label>
+
+              <div className="mt-1 flex flex-col gap-1 border-t pt-1.5">
                 {FONTES_CANAL.map((f) => (
                   <label key={f.valor} className="flex cursor-pointer items-center gap-2 text-sm font-normal">
                     <Checkbox
