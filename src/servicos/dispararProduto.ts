@@ -85,6 +85,25 @@ function fonteElegivel(canal: CanalRow, fonteProduto: string): boolean {
   return permitidas.some((selecao) => pertenceASelecaoFonte(fonteProduto, selecao));
 }
 
+/**
+ * Allow-list de grupos monitorados específicos do canal — mais granular que
+ * fontesPermitidas/categoriasPermitidas (aquelas restringem por categoria
+ * genérica de origem, essa por grupo individual). Quando o produto é de um
+ * grupo explicitamente permitido, o nicho do canal vira secundário (decisão
+ * explícita do usuário) — "bypass_nicho" sinaliza isso pra quem chama pular
+ * o nichoElegivel. Produto que não é de grupo monitorado nunca é afetado por
+ * essa allow-list, mesmo com ela definida.
+ */
+function grupoMonitoradoStatus(
+  canal: CanalRow,
+  produto: Pick<ProdutoRow, "grupoOrigemId">,
+): "bypass_nicho" | "bloqueado" | "sem_restricao" {
+  const permitidos = canal.gruposMonitoradosPermitidos;
+  if (!permitidos || permitidos.length === 0) return "sem_restricao";
+  if (!produto.grupoOrigemId) return "sem_restricao";
+  return permitidos.includes(produto.grupoOrigemId) ? "bypass_nicho" : "bloqueado";
+}
+
 export async function canaisElegiveis(produtoId: number): Promise<CanalComElegibilidade[]> {
   const produto = await produtosRepo.buscarPorId(produtoId);
   if (!produto) throw new Error(`Produto ${produtoId} não encontrado`);
@@ -100,7 +119,17 @@ export async function canaisElegiveis(produtoId: number): Promise<CanalComElegib
       continue;
     }
 
-    if (!nichoElegivel(canal, produto.nicho)) {
+    const grupoStatus = grupoMonitoradoStatus(canal, produto);
+    if (grupoStatus === "bloqueado") {
+      resultado.push({
+        ...canal,
+        elegivel: false,
+        motivo: "grupo monitorado não permitido nesse canal",
+      });
+      continue;
+    }
+
+    if (grupoStatus !== "bypass_nicho" && !nichoElegivel(canal, produto.nicho)) {
       resultado.push({
         ...canal,
         elegivel: false,
@@ -155,10 +184,15 @@ export async function proximoProdutoElegivel(canal: CanalRow): Promise<ProdutoRo
   const nichosAceitos =
     canal.categoriasPermitidas && canal.categoriasPermitidas.length > 0 ? canal.categoriasPermitidas : null;
 
-  const candidatos = await produtosRepo.listarPorNichos(nichosAceitos, "capturado");
+  // Alarga a busca com a allow-list de grupos monitorados (traz produto de
+  // grupo permitido mesmo fora de nichosAceitos) — a outra metade do bypass
+  // (excluir grupo BLOQUEADO que bateu no nicho por coincidência) é feita
+  // no loop abaixo, em JS, já que SQL só alarga, não estreita esse caso.
+  const candidatos = await produtosRepo.listarPorNichos(nichosAceitos, "capturado", canal.gruposMonitoradosPermitidos);
 
   for (const produto of candidatos) {
     if (!fonteElegivel(canal, produto.fonte)) continue;
+    if (grupoMonitoradoStatus(canal, produto) === "bloqueado") continue;
     const desconto = calcularDesconto(produto.precoOriginal, produto.precoPromocional);
     if (desconto >= canal.descontoMinimo) return produto;
   }

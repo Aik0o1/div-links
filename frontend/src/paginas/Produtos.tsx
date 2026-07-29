@@ -1,84 +1,29 @@
 import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
-import { Download, ShoppingBag, Trash2 } from "lucide-react";
+import { Download, Trash2 } from "lucide-react";
 import { api, mensagemAmigavel } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ProdutoCard } from "./produtos/ProdutoCard";
 import type { ProdutoRow } from "./produtos/tipos";
 
 interface NichoRow {
   id: string;
   nome: string;
+  ativo: boolean;
 }
 
+const ABA_MONITORADOS = "__monitorados__";
+
 export default function Produtos() {
-  const [produtos, setProdutos] = useState<ProdutoRow[]>([]);
   const [nichos, setNichos] = useState<NichoRow[]>([]);
-  const [filtroStatus, setFiltroStatus] = useState<string>("__todos__");
-  const [filtroNicho, setFiltroNicho] = useState<string>("__todos__");
-  const [filtroFonte, setFiltroFonte] = useState<string>("__todos__");
-  const [carregando, setCarregando] = useState(true);
-  const [capturandoML, setCapturandoML] = useState(false);
-  const [capturandoShopee, setCapturandoShopee] = useState(false);
+  const [abaAtiva, setAbaAtiva] = useState<string>("geral");
   const [limpando, setLimpando] = useState(false);
-  const [resultadoCaptura, setResultadoCaptura] = useState("");
-
-  const carregarProdutos = useCallback(async () => {
-    setCarregando(true);
-    try {
-      const params = new URLSearchParams();
-      if (filtroStatus !== "__todos__") params.set("status", filtroStatus);
-      if (filtroNicho !== "__todos__") params.set("nicho", filtroNicho);
-      if (filtroFonte !== "__todos__") params.set("fonte", filtroFonte);
-      const p = await api<ProdutoRow[]>(`/produtos?${params}`);
-      setProdutos(p);
-    } catch (err) {
-      toast.error(mensagemAmigavel(err));
-    } finally {
-      setCarregando(false);
-    }
-  }, [filtroStatus, filtroNicho, filtroFonte]);
 
   useEffect(() => {
-    api<NichoRow[]>("/nichos").then(setNichos).catch(() => {});
+    api<NichoRow[]>("/nichos").then((todos) => setNichos(todos.filter((n) => n.ativo)));
   }, []);
-
-  useEffect(() => {
-    carregarProdutos();
-  }, [carregarProdutos]);
-
-  function removerDaLista(id: number) {
-    setProdutos((atual) => atual.filter((p) => p.id !== id));
-  }
-
-  async function capturarML() {
-    setCapturandoML(true);
-    setResultadoCaptura("");
-    try {
-      const r = await api<{ novos: number; duplicados: number; ignorados: number }>("/produtos/capturar", { method: "POST" });
-      setResultadoCaptura(`${r.novos} produto(s) novo(s), ${r.duplicados} já existente(s), ${r.ignorados} ignorado(s) (sem nicho/desconto).`);
-      carregarProdutos();
-    } catch (err) {
-      setResultadoCaptura(`Erro: ${mensagemAmigavel(err)}`);
-    } finally {
-      setCapturandoML(false);
-    }
-  }
-
-  async function capturarShopee() {
-    setCapturandoShopee(true);
-    setResultadoCaptura("");
-    try {
-      const r = await api<{ novos: number; duplicados: number; total: number }>("/produtos/capturar-shopee", { method: "POST" });
-      setResultadoCaptura(`Shopee: ${r.novos} produto(s) novo(s), ${r.duplicados} já existente(s) (de ${r.total} ofertas encontradas).`);
-      carregarProdutos();
-    } catch (err) {
-      setResultadoCaptura(`Erro: ${mensagemAmigavel(err)}`);
-    } finally {
-      setCapturandoShopee(false);
-    }
-  }
 
   async function limparTudo() {
     if (!confirm("Apagar TODOS os produtos (inclusive já enviados e o histórico de disparos deles)? Essa ação não pode ser desfeita.")) {
@@ -88,7 +33,9 @@ export default function Produtos() {
     try {
       await api("/produtos", { method: "DELETE" });
       toast.success("Produtos apagados.");
-      carregarProdutos();
+      // Recarrega a aba atual — cada AbaProdutos busca sozinha ao montar, então
+      // um leve "reset" da aba ativa é suficiente pra refletir a limpeza.
+      setAbaAtiva((a) => a);
     } catch (err) {
       toast.error(mensagemAmigavel(err));
     } finally {
@@ -100,13 +47,123 @@ export default function Produtos() {
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl font-bold tracking-tight">Produtos</h2>
+        <Button variant="destructive" onClick={limparTudo} disabled={limpando}>
+          <Trash2 className="h-4 w-4" />
+          Limpar todos os produtos
+        </Button>
       </div>
 
+      <Tabs value={abaAtiva} onValueChange={setAbaAtiva}>
+        <TabsList className="mb-4 h-auto flex-wrap justify-start gap-1 bg-transparent p-0">
+          {nichos.map((n) => (
+            <TabsTrigger
+              key={n.id}
+              value={n.id}
+              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-full border px-3.5 py-1.5"
+            >
+              {n.nome}
+            </TabsTrigger>
+          ))}
+          <TabsTrigger
+            value={ABA_MONITORADOS}
+            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-full border px-3.5 py-1.5"
+          >
+            Grupos monitorados
+          </TabsTrigger>
+        </TabsList>
+
+        {nichos.map((n) => (
+          <TabsContent key={n.id} value={n.id}>
+            <AbaProdutos fixedNicho={n.id} mostrarCapturar />
+          </TabsContent>
+        ))}
+        <TabsContent value={ABA_MONITORADOS}>
+          <AbaProdutos fixedFonte="monitorados" mostrarCapturar={false} nichosParaFiltro={nichos} />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function AbaProdutos({
+  fixedNicho,
+  fixedFonte,
+  mostrarCapturar,
+  nichosParaFiltro,
+}: {
+  fixedNicho?: string;
+  fixedFonte?: "monitorados";
+  mostrarCapturar: boolean;
+  nichosParaFiltro?: NichoRow[];
+}) {
+  const [produtos, setProdutos] = useState<ProdutoRow[]>([]);
+  const [filtroStatus, setFiltroStatus] = useState("__todos__");
+  const [filtroNicho, setFiltroNicho] = useState("__todos__");
+  const [carregando, setCarregando] = useState(true);
+  const [capturando, setCapturando] = useState(false);
+  const [resultadoCaptura, setResultadoCaptura] = useState("");
+
+  const carregarProdutos = useCallback(async () => {
+    setCarregando(true);
+    try {
+      const params = new URLSearchParams();
+      if (filtroStatus !== "__todos__") params.set("status", filtroStatus);
+      if (fixedNicho) params.set("nicho", fixedNicho);
+      else if (filtroNicho !== "__todos__") params.set("nicho", filtroNicho);
+      if (fixedFonte) params.set("fonte", fixedFonte);
+      const p = await api<ProdutoRow[]>(`/produtos?${params}`);
+      setProdutos(p);
+    } catch (err) {
+      toast.error(mensagemAmigavel(err));
+    } finally {
+      setCarregando(false);
+    }
+  }, [filtroStatus, filtroNicho, fixedNicho, fixedFonte]);
+
+  useEffect(() => {
+    carregarProdutos();
+  }, [carregarProdutos]);
+
+  function removerDaLista(id: number) {
+    setProdutos((atual) => atual.filter((p) => p.id !== id));
+  }
+
+  async function capturar() {
+    if (!fixedNicho) return;
+    setCapturando(true);
+    setResultadoCaptura("");
+    try {
+      const [ml, shopee] = await Promise.all([
+        api<{ novos: number; duplicados: number; ignorados: number; total: number }>(
+          `/produtos/capturar?nicho=${fixedNicho}`,
+          { method: "POST" },
+        ),
+        api<{ novos: number; duplicados: number; total: number }>(`/produtos/capturar-shopee?nicho=${fixedNicho}`, {
+          method: "POST",
+        }),
+      ]);
+      const novos = ml.novos + shopee.novos;
+      const duplicados = ml.duplicados + shopee.duplicados;
+      setResultadoCaptura(
+        `${novos} produto(s) novo(s), ${duplicados} já existente(s), ${ml.ignorados} ignorado(s) do Mercado Livre (sem nicho/desconto).`,
+      );
+      carregarProdutos();
+    } catch (err) {
+      setResultadoCaptura(`Erro: ${mensagemAmigavel(err)}`);
+    } finally {
+      setCapturando(false);
+    }
+  }
+
+  return (
+    <div>
       <div className="mb-4 flex flex-wrap items-center gap-4 border-b pb-4">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Filtrar</span>
           <Select value={filtroStatus} onValueChange={setFiltroStatus}>
-            <SelectTrigger className="h-9 w-40"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-9 w-40">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="__todos__">Todos os status</SelectItem>
               <SelectItem value="capturado">capturado</SelectItem>
@@ -114,42 +171,29 @@ export default function Produtos() {
               <SelectItem value="falhou">falhou</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={filtroNicho} onValueChange={setFiltroNicho}>
-            <SelectTrigger className="h-9 w-40"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__todos__">Todos os nichos</SelectItem>
-              {nichos.map((n) => (
-                <SelectItem key={n.id} value={n.id}>{n.nome}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={filtroFonte} onValueChange={setFiltroFonte}>
-            <SelectTrigger className="h-9 w-52"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__todos__">Todas as origens</SelectItem>
-              <SelectItem value="mercado_livre">Mercado Livre (captura)</SelectItem>
-              <SelectItem value="shopee">Shopee (captura + grupos)</SelectItem>
-              <SelectItem value="monitorados">Grupos monitorados (todos)</SelectItem>
-            </SelectContent>
-          </Select>
+          {!fixedNicho && nichosParaFiltro && (
+            <Select value={filtroNicho} onValueChange={setFiltroNicho}>
+              <SelectTrigger className="h-9 w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__todos__">Todos os nichos</SelectItem>
+                {nichosParaFiltro.map((n) => (
+                  <SelectItem key={n.id} value={n.id}>
+                    {n.nome}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Capturar novos</span>
-          <Button onClick={capturarML} disabled={capturandoML}>
+        {mostrarCapturar && (
+          <Button onClick={capturar} disabled={capturando}>
             <Download className="h-4 w-4" />
-            {capturandoML ? "Capturando..." : "Mercado Livre"}
+            {capturando ? "Capturando..." : "Capturar"}
           </Button>
-          <Button onClick={capturarShopee} disabled={capturandoShopee}>
-            <ShoppingBag className="h-4 w-4" />
-            {capturandoShopee ? "Capturando..." : "Shopee"}
-          </Button>
-        </div>
-
-        <Button variant="destructive" className="ml-auto" onClick={limparTudo} disabled={limpando}>
-          <Trash2 className="h-4 w-4" />
-          Limpar todos os produtos
-        </Button>
+        )}
       </div>
 
       {resultadoCaptura && <p className="mb-3 text-sm text-muted-foreground">{resultadoCaptura}</p>}

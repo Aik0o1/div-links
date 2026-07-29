@@ -5,6 +5,7 @@ export interface CanalRow {
   identificadorGrupo: string;
   categoriasPermitidas: string[] | null;
   fontesPermitidas: string[] | null;
+  gruposMonitoradosPermitidos: string[] | null;
   descontoMinimo: number;
   intervaloMinimoMinutos: number;
   ativo: boolean;

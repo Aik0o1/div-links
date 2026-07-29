@@ -29,6 +29,7 @@ export async function processarProdutoDetectado(
   origem: OrigemGrupoMonitorado,
   nicho: string,
   textoOriginal: string,
+  grupoId?: string,
 ): Promise<void> {
   try {
     const urlResolvida = await resolverUrlFinal(urlBruta);
@@ -74,6 +75,7 @@ export async function processarProdutoDetectado(
       cupom: cupom ?? undefined,
       nicho,
       precoNoPix: precosDoPost?.noPix ?? false,
+      grupoOrigemId: grupoId,
     });
 
     if (resultado) {

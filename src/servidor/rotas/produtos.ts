@@ -1,12 +1,27 @@
 import { Router } from "express";
+import path from "node:path";
 import * as produtosRepo from "../../repositorios/produtos.js";
-import { capturarProdutos } from "../../servicos/capturarProdutos.js";
-import { capturarProdutosShopee } from "../../servicos/capturarProdutosShopee.js";
+import type { ProdutoRow } from "../../repositorios/produtos.js";
+import { capturarProdutosPorNicho } from "../../servicos/capturarProdutos.js";
+import { capturarProdutosShopeePorNicho } from "../../servicos/capturarProdutosShopee.js";
 import { canaisElegiveis, dispararParaCanal } from "../../servicos/dispararProduto.js";
 import { gerarChamada } from "../../integracoes/ollama/gerarChamada.js";
 import { logger } from "../../config/logger.js";
 
 export const rotaProdutos = Router();
+
+/**
+ * `imagemUrl` de produto de grupo monitorado (Shopee, Telegram ou WhatsApp)
+ * é um caminho de arquivo local no servidor, não uma URL — o disparo lê
+ * direto do disco (ver dispararProduto.ts), mas o navegador não consegue
+ * carregar isso como `<img src>`. Só pra resposta da API (exibição no
+ * card), reescreve pro caminho servido em /imagens-capturadas (ver
+ * app.ts). Não altera o que fica salvo no banco nem o que o disparo usa.
+ */
+function paraExibicao(produto: ProdutoRow): ProdutoRow {
+  if (!produto.imagemUrl || /^https?:\/\//i.test(produto.imagemUrl)) return produto;
+  return { ...produto, imagemUrl: `/imagens-capturadas/${path.basename(produto.imagemUrl)}` };
+}
 
 rotaProdutos.get("/", async (req, res) => {
   const { status, nicho, fonte } = req.query;
@@ -15,7 +30,7 @@ rotaProdutos.get("/", async (req, res) => {
     nicho: typeof nicho === "string" ? nicho : undefined,
     fonte: fonte === "mercado_livre" || fonte === "shopee" || fonte === "monitorados" ? fonte : undefined,
   });
-  res.json(produtos);
+  res.json(produtos.map(paraExibicao));
 });
 
 // Apaga todos os produtos (inclusive já enviados — histórico de disparos vai
@@ -32,22 +47,32 @@ rotaProdutos.delete("/", async (_req, res) => {
   }
 });
 
-rotaProdutos.post("/capturar", async (_req, res) => {
+rotaProdutos.post("/capturar", async (req, res) => {
+  const { nicho } = req.query;
+  if (typeof nicho !== "string" || !nicho) {
+    res.status(400).json({ erro: "nicho é obrigatório (?nicho=...)" });
+    return;
+  }
   try {
-    const resultado = await capturarProdutos();
+    const resultado = await capturarProdutosPorNicho(nicho);
     res.json(resultado);
   } catch (err) {
-    logger.error({ err }, "falha ao capturar produtos");
+    logger.error({ err, nicho }, "falha ao capturar produtos");
     res.status(500).json({ erro: (err as Error).message });
   }
 });
 
-rotaProdutos.post("/capturar-shopee", async (_req, res) => {
+rotaProdutos.post("/capturar-shopee", async (req, res) => {
+  const { nicho } = req.query;
+  if (typeof nicho !== "string" || !nicho) {
+    res.status(400).json({ erro: "nicho é obrigatório (?nicho=...)" });
+    return;
+  }
   try {
-    const resultado = await capturarProdutosShopee();
+    const resultado = await capturarProdutosShopeePorNicho(nicho);
     res.json(resultado);
   } catch (err) {
-    logger.error({ err }, "falha ao capturar ofertas Shopee");
+    logger.error({ err, nicho }, "falha ao capturar ofertas Shopee");
     res.status(500).json({ erro: (err as Error).message });
   }
 });

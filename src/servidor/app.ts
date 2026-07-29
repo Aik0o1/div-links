@@ -16,6 +16,21 @@ const DIRETORIO_PUBLIC = path.join(
   "public",
 );
 
+// Imagens baixadas de posts de grupo monitorado (Shopee, Telegram e
+// WhatsApp — ver telegramListener/cliente.ts e rotas/whatsapp.ts) são
+// salvas com caminho absoluto de arquivo, não uma URL — precisam de uma
+// rota servindo o diretório pra aparecerem no card de produto do painel
+// (o navegador não consegue carregar "/home/.../arquivo.jpg" como <img>).
+// O disparo em si (dispararProduto.ts) continua lendo o arquivo direto do
+// disco, sem passar por essa rota.
+const DIRETORIO_IMAGENS_CAPTURADAS = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "data",
+  "imagens-capturadas",
+);
+
 export function criarApp() {
   const app = express();
   app.use(express.json());
@@ -30,6 +45,7 @@ export function criarApp() {
   app.use("/api/telegram-listener", rotaTelegramListener);
   app.use("/api/dashboard", rotaDashboard);
 
+  app.use("/imagens-capturadas", express.static(DIRETORIO_IMAGENS_CAPTURADAS));
   app.use(express.static(DIRETORIO_PUBLIC));
 
   return app;

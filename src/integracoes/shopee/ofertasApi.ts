@@ -57,17 +57,23 @@ interface RespostaProductOfferV2 {
 }
 
 /**
- * Ofertas gerais da Shopee via `productOfferV2` — diferente de
- * generateShortLink, esse endpoint já devolve o `offerLink` pronto (link de
- * afiliado já rastreado com a nossa conta), sem precisar gerar separado.
- * Sem filtro de categoria/keyword — pega o catálogo geral, mesma ideia do
- * nicho "geral" do Mercado Livre.
+ * Ofertas da Shopee via `productOfferV2` — diferente de generateShortLink,
+ * esse endpoint já devolve o `offerLink` pronto (link de afiliado já
+ * rastreado com a nossa conta), sem precisar gerar separado. Sem `keyword`,
+ * pega o catálogo geral (mesma ideia do nicho "geral" do Mercado Livre); com
+ * `keyword`, filtra por termo de busca — não existe um filtro de categoria
+ * confiável equivalente ao "category=MLB..." do ML (ver nichoKeywords.ts).
  */
-export async function buscarOfertasShopee(paginas: number, itensPorPagina = 20): Promise<OfertaShopee[]> {
+export async function buscarOfertasShopee(
+  paginas: number,
+  itensPorPagina = 20,
+  keyword?: string,
+): Promise<OfertaShopee[]> {
   const todas: OfertaShopee[] = [];
+  const filtroKeyword = keyword ? `, keyword: ${JSON.stringify(keyword)}` : "";
 
   for (let pagina = 1; pagina <= paginas; pagina++) {
-    const query = `query { productOfferV2(page: ${pagina}, limit: ${itensPorPagina}) { nodes { itemId productName imageUrl productLink offerLink priceMin priceDiscountRate } } }`;
+    const query = `query { productOfferV2(page: ${pagina}, limit: ${itensPorPagina}${filtroKeyword}) { nodes { itemId productName imageUrl productLink offerLink priceMin priceDiscountRate } } }`;
     const dados = await chamarGraphQL<RespostaProductOfferV2>(query);
     const nodes = dados.productOfferV2?.nodes ?? [];
     if (nodes.length === 0) break;

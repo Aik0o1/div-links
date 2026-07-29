@@ -37,6 +37,7 @@ interface FormState {
   geral: boolean;
   nichosSelecionados: string[];
   fontesSelecionadas: string[];
+  gruposSelecionados: string[];
 }
 
 function estadoInicial(canal: CanalRow | null): FormState {
@@ -51,16 +52,51 @@ function estadoInicial(canal: CanalRow | null): FormState {
     geral: categorias.length === 0,
     nichosSelecionados: categorias,
     fontesSelecionadas: canal?.fontesPermitidas ?? [],
+    gruposSelecionados: canal?.gruposMonitoradosPermitidos ?? [],
   };
+}
+
+interface GrupoMonitoradoOpcao {
+  id: string;
+  nome: string;
+  plataforma: "whatsapp" | "telegram";
+}
+
+/** Combina as rotas de grupo monitorado + listagem já existentes (mesmo padrão de GruposMonitorados.tsx) — sem endpoint novo. */
+async function buscarGruposMonitoradosDisponiveis(): Promise<GrupoMonitoradoOpcao[]> {
+  const [wMonitorados, wGrupos, tStatus, tGrupos] = await Promise.all([
+    api<{ id: string; nicho: string }[]>("/whatsapp/grupos-monitorados").catch(() => []),
+    api<{ jid: string; nome: string }[]>("/whatsapp/grupos").catch(() => []),
+    api<{ gruposMonitorados: { id: string; nicho: string }[] }>("/telegram-listener/status").catch(() => ({
+      gruposMonitorados: [],
+    })),
+    api<{ id: string; nome: string }[]>("/telegram-listener/grupos").catch(() => []),
+  ]);
+
+  const nomesWhats = new Map(wGrupos.map((g) => [g.jid, g.nome]));
+  const nomesTelegram = new Map(tGrupos.map((g) => [g.id, g.nome]));
+
+  return [
+    ...wMonitorados.map((g) => ({ id: g.id, nome: nomesWhats.get(g.id) ?? g.id, plataforma: "whatsapp" as const })),
+    ...tStatus.gruposMonitorados.map((g) => ({
+      id: g.id,
+      nome: nomesTelegram.get(g.id) ?? g.id,
+      plataforma: "telegram" as const,
+    })),
+  ];
 }
 
 export function CanalDialog({ aberto, onFechar, canal, nichos, onSalvo }: Props) {
   const [form, setForm] = useState<FormState>(() => estadoInicial(canal));
   const [salvando, setSalvando] = useState(false);
+  const [gruposDisponiveis, setGruposDisponiveis] = useState<GrupoMonitoradoOpcao[]>([]);
   const editando = canal !== null;
 
   useEffect(() => {
-    if (aberto) setForm(estadoInicial(canal));
+    if (aberto) {
+      setForm(estadoInicial(canal));
+      buscarGruposMonitoradosDisponiveis().then(setGruposDisponiveis);
+    }
   }, [aberto, canal]);
 
   function alternarNicho(id: string, marcado: boolean) {
@@ -74,6 +110,13 @@ export function CanalDialog({ aberto, onFechar, canal, nichos, onSalvo }: Props)
     setForm((f) => ({
       ...f,
       fontesSelecionadas: marcado ? [...f.fontesSelecionadas, valor] : f.fontesSelecionadas.filter((v) => v !== valor),
+    }));
+  }
+
+  function alternarGrupo(id: string, marcado: boolean) {
+    setForm((f) => ({
+      ...f,
+      gruposSelecionados: marcado ? [...f.gruposSelecionados, id] : f.gruposSelecionados.filter((g) => g !== id),
     }));
   }
 
@@ -92,6 +135,7 @@ export function CanalDialog({ aberto, onFechar, canal, nichos, onSalvo }: Props)
             ativo: form.ativo,
             categoriasPermitidas,
             fontesPermitidas: form.fontesSelecionadas,
+            gruposMonitoradosPermitidos: form.gruposSelecionados,
           }),
         });
         toast.success(`Canal "${form.nome || canal.identificadorGrupo}" salvo.`);
@@ -106,6 +150,7 @@ export function CanalDialog({ aberto, onFechar, canal, nichos, onSalvo }: Props)
             intervaloMinimoMinutos: Number(form.intervaloMinimoMinutos),
             categoriasPermitidas,
             fontesPermitidas: form.fontesSelecionadas,
+            gruposMonitoradosPermitidos: form.gruposSelecionados,
           }),
         });
         toast.success("Canal criado.");
@@ -254,6 +299,34 @@ export function CanalDialog({ aberto, onFechar, canal, nichos, onSalvo }: Props)
               </div>
               <p className="text-xs text-muted-foreground">Nenhuma marcada = aceita qualquer origem</p>
             </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5 rounded-md border bg-muted/40 p-3.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Grupos monitorados
+            </span>
+            {gruposDisponiveis.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Nenhum grupo monitorado configurado ainda (ver aba Grupos monitorados).
+              </p>
+            ) : (
+              <div className="flex max-h-36 flex-col gap-1 overflow-y-auto">
+                {gruposDisponiveis.map((g) => (
+                  <label key={g.id} className="flex cursor-pointer items-center gap-2 text-sm font-normal">
+                    <Checkbox
+                      checked={form.gruposSelecionados.includes(g.id)}
+                      onCheckedChange={(v) => alternarGrupo(g.id, v === true)}
+                    />
+                    {g.nome}
+                    <span className="text-xs text-muted-foreground capitalize">({g.plataforma})</span>
+                  </label>
+                ))}
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Nenhum marcado = sem restrição por grupo (nicho/origem mandam). Grupo marcado aqui entra mesmo se o
+              nicho dele não estiver liberado acima.
+            </p>
           </div>
         </div>
 

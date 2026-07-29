@@ -16,6 +16,8 @@ export interface ProdutoRow {
   precoNoPix: boolean;
   status: string;
   criadoEm: string;
+  /** Id do grupo monitorado (WhatsApp JID ou Telegram chat id) que originou esse produto — null pra captura em massa ML/Shopee. */
+  grupoOrigemId: string | null;
 }
 
 export interface NovoProduto {
@@ -30,6 +32,8 @@ export interface NovoProduto {
   precoNoPix?: boolean;
   /** Só quando a fonte já entrega o link de afiliado pronto (ex.: `productOfferV2` da Shopee) — pula a geração no disparo. */
   urlAfiliado?: string;
+  /** Só pra captura via grupo monitorado — ver ProdutoRow.grupoOrigemId. */
+  grupoOrigemId?: string;
 }
 
 function paraProduto(row: any): ProdutoRow {
@@ -49,6 +53,7 @@ function paraProduto(row: any): ProdutoRow {
     precoNoPix: row.preco_no_pix,
     status: row.status,
     criadoEm: row.criado_em,
+    grupoOrigemId: row.grupo_origem_id,
   };
 }
 
@@ -72,8 +77,8 @@ export async function inserirSeNovo(produto: NovoProduto): Promise<ProdutoRow | 
   const hash = calcularHash(produto);
 
   const { rows } = await pool.query(
-    `INSERT INTO produtos (fonte, url_original, titulo, preco_original, preco_promocional, imagem_url, cupom, nicho, preco_no_pix, url_afiliado, hash_conteudo)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    `INSERT INTO produtos (fonte, url_original, titulo, preco_original, preco_promocional, imagem_url, cupom, nicho, preco_no_pix, url_afiliado, hash_conteudo, grupo_origem_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      ON CONFLICT (hash_conteudo) DO NOTHING
      RETURNING *`,
     [
@@ -88,6 +93,7 @@ export async function inserirSeNovo(produto: NovoProduto): Promise<ProdutoRow | 
       produto.precoNoPix ?? false,
       produto.urlAfiliado ?? null,
       hash,
+      produto.grupoOrigemId ?? null,
     ],
   );
 
@@ -139,7 +145,21 @@ export async function listar(filtro?: {
 // dispararProduto.ts).
 const FONTE_PRIORITARIA = "'telegram_terceiros', 'whatsapp_terceiros', 'telegram_shopee', 'whatsapp_shopee'";
 
-export async function listarPorNichos(nichos: string[] | null, status: string): Promise<ProdutoRow[]> {
+/**
+ * `gruposPermitidos` alarga o filtro de nicho: além do que bate em `nichos`,
+ * também traz produto de grupo monitorado cujo `grupo_origem_id` esteja
+ * nessa lista, mesmo que o nicho dele não esteja em `nichos` — é a metade
+ * "alargar" do bypass de nicho por allow-list de grupo (ver
+ * grupoMonitoradoStatus em dispararProduto.ts; a outra metade, "estreitar"
+ * pra excluir grupo bloqueado que bateu no nicho por coincidência, é feita
+ * em JS por quem chama essa função). Ordem de prioridade (grupo monitorado
+ * primeiro) não muda em nenhum dos dois casos.
+ */
+export async function listarPorNichos(
+  nichos: string[] | null,
+  status: string,
+  gruposPermitidos?: string[] | null,
+): Promise<ProdutoRow[]> {
   if (nichos === null) {
     const { rows } = await pool.query(
       `SELECT * FROM produtos WHERE status = $1
@@ -150,9 +170,10 @@ export async function listarPorNichos(nichos: string[] | null, status: string): 
   }
 
   const { rows } = await pool.query(
-    `SELECT * FROM produtos WHERE nicho = ANY($1) AND status = $2
+    `SELECT * FROM produtos
+     WHERE status = $2 AND (nicho = ANY($1) OR ($3::text[] IS NOT NULL AND grupo_origem_id = ANY($3)))
      ORDER BY (fonte IN (${FONTE_PRIORITARIA})) DESC, criado_em ASC`,
-    [nichos, status],
+    [nichos, status, gruposPermitidos && gruposPermitidos.length > 0 ? gruposPermitidos : null],
   );
   return rows.map(paraProduto);
 }
@@ -165,6 +186,17 @@ export async function buscarPorId(id: number): Promise<ProdutoRow | null> {
 /** Remove os produtos ainda não disparados (usado antes de uma nova captura, pra substituir a leva anterior). */
 export async function removerTodos(): Promise<void> {
   await pool.query("DELETE FROM produtos");
+}
+
+/**
+ * Wipe escopado a um nicho+fonte só — usado pela captura por aba (ver
+ * capturarProdutosPorNicho em capturarProdutos.ts), pra recapturar só aquela
+ * categoria sem apagar os outros nichos nem a Shopee. Diferente de
+ * removerTodos(), que apaga a tabela inteira (só usado no "Limpar todos" e
+ * na captura ML global via CLI/rota sem nicho).
+ */
+export async function removerPorNichoEFonte(nicho: string, fonte: string): Promise<void> {
+  await pool.query("DELETE FROM produtos WHERE nicho = $1 AND fonte = $2", [nicho, fonte]);
 }
 
 export async function remover(id: number): Promise<void> {

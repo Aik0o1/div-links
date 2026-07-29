@@ -14,6 +14,7 @@ rotaCanais.post("/", async (req, res) => {
     identificadorGrupo,
     categoriasPermitidas,
     fontesPermitidas,
+    gruposMonitoradosPermitidos,
     descontoMinimo,
     intervaloMinimoMinutos,
   } = req.body;
@@ -27,6 +28,7 @@ rotaCanais.post("/", async (req, res) => {
     identificadorGrupo,
     categoriasPermitidas,
     fontesPermitidas,
+    gruposMonitoradosPermitidos,
     descontoMinimo,
     intervaloMinimoMinutos,
   });

@@ -108,7 +108,7 @@ rotaWhatsapp.post("/webhook", (req, res) => {
     .then((monitorados) => {
       const grupo = monitorados.find((g) => g.id === remoteJid);
       if (!grupo) return;
-      return processarMensagemGrupo(texto, "whatsapp", grupo.nicho, criarBaixadorImagemWhatsapp(dados));
+      return processarMensagemGrupo(texto, "whatsapp", grupo.nicho, criarBaixadorImagemWhatsapp(dados), remoteJid);
     })
     .catch((err) => {
       logger.error({ err, remoteJid }, "falha ao processar webhook do WhatsApp");

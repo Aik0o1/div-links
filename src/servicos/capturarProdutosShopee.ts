@@ -1,13 +1,10 @@
-import { buscarOfertasShopee } from "../integracoes/shopee/ofertasApi.js";
+import { buscarOfertasShopee, type OfertaShopee } from "../integracoes/shopee/ofertasApi.js";
+import { NICHO_SHOPEE_KEYWORDS } from "../integracoes/shopee/nichoKeywords.js";
 import * as produtosRepo from "../repositorios/produtos.js";
 import { logger } from "../config/logger.js";
 
-// Mesmo nicho dedicado usado pela captura via grupo monitorado (ver
-// capturarProdutoShopee.ts) — isolado do resto por enquanto, só o canal
-// "teste shopee" aceita esse nicho.
-const NICHO_TESTE_SHOPEE = "shopee";
-
-const PAGINAS = 5;
+const PAGINAS_GERAL = 5;
+const PAGINAS_POR_PALAVRA_CHAVE = 2;
 const ITENS_POR_PAGINA = 20;
 
 export interface ResultadoCapturaShopee {
@@ -16,17 +13,7 @@ export interface ResultadoCapturaShopee {
   total: number;
 }
 
-/**
- * Captura em massa de ofertas gerais da Shopee via API oficial
- * (`productOfferV2`) — equivalente ao "Capturar agora" do Mercado Livre, mas
- * sem apagar a tabela antes (diferente do ML): a captura via grupo
- * monitorado já convive na mesma tabela, e zerar tudo apagaria produto de
- * grupo monitorado ainda não disparado (mesmo problema já visto com o
- * Mercado Livre). Só insere, deduplicado por hash.
- */
-export async function capturarProdutosShopee(): Promise<ResultadoCapturaShopee> {
-  const ofertas = await buscarOfertasShopee(PAGINAS, ITENS_POR_PAGINA);
-
+async function inserirOfertas(ofertas: OfertaShopee[], nicho: string): Promise<{ novos: number; duplicados: number }> {
   let novos = 0;
   let duplicados = 0;
 
@@ -46,13 +33,50 @@ export async function capturarProdutosShopee(): Promise<ResultadoCapturaShopee> 
       precoOriginal,
       precoPromocional: oferta.precoPromocional,
       imagemUrl: oferta.imagemUrl,
-      nicho: NICHO_TESTE_SHOPEE,
+      nicho,
     });
 
     if (resultado) novos++;
     else duplicados++;
   }
 
-  logger.info({ novos, duplicados, total: ofertas.length }, "captura de ofertas Shopee concluída");
-  return { novos, duplicados, total: ofertas.length };
+  return { novos, duplicados };
+}
+
+/**
+ * Captura ofertas da Shopee via API oficial (`productOfferV2`) pra UM nicho
+ * (aba Produtos) — sem apagar a tabela antes (diferente do ML: a captura via
+ * grupo monitorado já convive na mesma tabela, e zerar tudo apagaria produto
+ * ainda não disparado). Só insere, deduplicado por hash.
+ *
+ * "geral" pega o catálogo amplo sem filtro; os demais buscam por
+ * palavra-chave curada (ver nichoKeywords.ts — a Shopee não tem um filtro de
+ * categoria confiável equivalente ao "category=MLB..." do ML). Nicho sem
+ * palavra-chave definida (ex.: nicho novo criado só pro ML) retorna vazio,
+ * sem erro.
+ */
+export async function capturarProdutosShopeePorNicho(nichoId: string): Promise<ResultadoCapturaShopee> {
+  let novos = 0;
+  let duplicados = 0;
+  let total = 0;
+
+  if (nichoId === "geral") {
+    const ofertas = await buscarOfertasShopee(PAGINAS_GERAL, ITENS_POR_PAGINA);
+    total += ofertas.length;
+    const r = await inserirOfertas(ofertas, "geral");
+    novos += r.novos;
+    duplicados += r.duplicados;
+  } else {
+    const palavrasChave = NICHO_SHOPEE_KEYWORDS[nichoId] ?? [];
+    for (const palavra of palavrasChave) {
+      const ofertas = await buscarOfertasShopee(PAGINAS_POR_PALAVRA_CHAVE, ITENS_POR_PAGINA, palavra);
+      total += ofertas.length;
+      const r = await inserirOfertas(ofertas, nichoId);
+      novos += r.novos;
+      duplicados += r.duplicados;
+    }
+  }
+
+  logger.info({ nicho: nichoId, novos, duplicados, total }, "captura de ofertas Shopee por nicho concluída");
+  return { novos, duplicados, total };
 }

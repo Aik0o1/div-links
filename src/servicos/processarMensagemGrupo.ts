@@ -28,6 +28,7 @@ export async function processarMensagemGrupo(
   origem: OrigemGrupoMonitorado,
   nicho: string,
   baixarImagem?: () => Promise<string | undefined>,
+  grupoId?: string,
 ): Promise<void> {
   if (extrairCupons(texto).length > 0) {
     await processarComoCupons(texto);
@@ -36,14 +37,14 @@ export async function processarMensagemGrupo(
 
   const produtoDetectado = extrairProdutoCard(texto);
   if (produtoDetectado) {
-    await processarProdutoDetectado(produtoDetectado.urlBruta, produtoDetectado.cupom, origem, nicho, texto);
+    await processarProdutoDetectado(produtoDetectado.urlBruta, produtoDetectado.cupom, origem, nicho, texto, grupoId);
     return;
   }
 
   const produtoShopee = extrairProdutoCardShopee(texto);
   if (produtoShopee) {
     const caminhoImagem = await baixarImagem?.();
-    await processarProdutoDetectadoShopee(produtoShopee, origem, caminhoImagem);
+    await processarProdutoDetectadoShopee(produtoShopee, origem, caminhoImagem, grupoId);
     return;
   }
 

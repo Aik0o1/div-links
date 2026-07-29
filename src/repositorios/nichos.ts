@@ -28,6 +28,14 @@ export async function listar(): Promise<NichoRow[]> {
   return rows.map(paraNicho);
 }
 
+export async function buscarPorId(id: string): Promise<NichoRow | null> {
+  const { rows } = await pool.query(
+    "SELECT id, nome, categoria_ids, ativo FROM nichos WHERE id = $1",
+    [id],
+  );
+  return rows[0] ? paraNicho(rows[0]) : null;
+}
+
 export async function ativos(): Promise<NichoRow[]> {
   const { rows } = await pool.query(
     "SELECT id, nome, categoria_ids, ativo FROM nichos WHERE ativo = true ORDER BY nome",

@@ -26,6 +26,7 @@ export async function processarProdutoDetectadoShopee(
   produto: ProdutoCardShopeeDetectado,
   origem: OrigemGrupoMonitorado,
   caminhoImagem: string | undefined,
+  grupoId?: string,
 ): Promise<void> {
   if (!produto.titulo) {
     logger.debug({ urlBruta: produto.urlBruta }, "produto Shopee sem título reconhecível no post, ignorado");
@@ -43,6 +44,7 @@ export async function processarProdutoDetectadoShopee(
       cupom: produto.cupom ?? undefined,
       nicho: NICHO_TESTE_SHOPEE,
       precoNoPix: produto.precos?.noPix ?? false,
+      grupoOrigemId: grupoId,
     });
 
     if (resultado) {
