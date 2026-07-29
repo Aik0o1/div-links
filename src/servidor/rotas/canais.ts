@@ -8,8 +8,15 @@ rotaCanais.get("/", async (_req, res) => {
 });
 
 rotaCanais.post("/", async (req, res) => {
-  const { nome, tipo, identificadorGrupo, categoriasPermitidas, descontoMinimo, intervaloMinimoMinutos } =
-    req.body;
+  const {
+    nome,
+    tipo,
+    identificadorGrupo,
+    categoriasPermitidas,
+    fontesPermitidas,
+    descontoMinimo,
+    intervaloMinimoMinutos,
+  } = req.body;
   if (!tipo || !identificadorGrupo) {
     res.status(400).json({ erro: "tipo e identificadorGrupo são obrigatórios" });
     return;
@@ -19,6 +26,7 @@ rotaCanais.post("/", async (req, res) => {
     tipo,
     identificadorGrupo,
     categoriasPermitidas,
+    fontesPermitidas,
     descontoMinimo,
     intervaloMinimoMinutos,
   });

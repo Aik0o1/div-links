@@ -4,12 +4,18 @@ import * as cuponsRepo from "../repositorios/cupons.js";
 import * as configuracoesRepo from "../repositorios/configuracoes.js";
 import { enviarFotoLocalComLegenda as enviarFotoLocalTelegram } from "../integracoes/telegram/bot.js";
 import { enviarFotoLocalComLegenda as enviarFotoLocalWhatsapp } from "../integracoes/evolutionApi/bot.js";
-import { extrairCupons, formatarLegendaCupons } from "./parsearCupons.js";
+import { extrairCupons, formatarLegendaCupons, detectarPlataformaCupom } from "./parsearCupons.js";
+import { gerarLinkAfiliado as gerarLinkAfiliadoShopee } from "../integracoes/shopee/api.js";
 import { logger } from "../config/logger.js";
 import type { CanalRow } from "../repositorios/canais.js";
 
 const RAIZ_PROJETO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const BANNER_CUPOM = path.join(RAIZ_PROJETO, "src", "assets", "imgs", "MLimg.jpeg");
+const BANNER_CUPOM_ML = path.join(RAIZ_PROJETO, "src", "assets", "imgs", "MLimg.jpeg");
+// Convertido de .webp pra .jpeg (ver src/assets/imgs/shopee.webp original) —
+// o envio local pro Telegram (enviarFotoLocalComLegenda) manda o Blob sempre
+// como image/jpeg fixo, então um .webp de verdade sairia com o tipo errado;
+// mais simples converter uma vez do que mudar a detecção de mime-type.
+const BANNER_CUPOM_SHOPEE = path.join(RAIZ_PROJETO, "src", "assets", "imgs", "shopee.jpeg");
 
 /**
  * Só captura e valida o post do grupo de cupons monitorado — não tenta
@@ -53,19 +59,43 @@ export interface ResultadoCupomPendente {
  * agendador segue pro fluxo normal de produtos).
  */
 export async function dispararCupomPendente(canal: CanalRow): Promise<ResultadoCupomPendente | null> {
-  const linkFixo = await configuracoesRepo.obterLinkCupomFixo();
-  if (!linkFixo) return null;
-
   const candidatos = await cuponsRepo.listarPendentesParaCanal(canal.id);
+  if (candidatos.length === 0) return null;
+
+  // Link fixo é config específica do Mercado Livre (lista de recomendações)
+  // — cupom da Shopee usa o link de afiliado gerado a partir do próprio link
+  // que veio no post (ver detectarPlataformaCupom). Por isso não busca/exige
+  // aqui em cima mais: um cupom da Shopee não pode ficar bloqueado só porque
+  // o link fixo do ML não foi configurado.
+  const linkFixo = await configuracoesRepo.obterLinkCupomFixo();
 
   for (const cupom of candidatos) {
     const cuponsExtraidos = extrairCupons(cupom.texto);
     if (cuponsExtraidos.length === 0) continue; // formato não reconhecível, nunca vai ser repassável
 
-    const legenda = formatarLegendaCupons(cuponsExtraidos, linkFixo);
+    const { plataforma, urlShopee } = detectarPlataformaCupom(cupom.texto);
+
+    let link: string;
+    if (plataforma === "shopee" && urlShopee) {
+      try {
+        link = await gerarLinkAfiliadoShopee(urlShopee);
+      } catch (err) {
+        logger.error(
+          { err, cupomId: cupom.id },
+          "falha ao gerar link de afiliado Shopee pro cupom repassado — pula, tenta de novo no próximo ciclo",
+        );
+        continue;
+      }
+    } else {
+      if (!linkFixo) continue; // cupom do ML precisa do link fixo configurado — sem ele, pula (não é falha permanente)
+      link = linkFixo;
+    }
+
+    const legenda = formatarLegendaCupons(cuponsExtraidos, link, plataforma);
+    const banner = plataforma === "shopee" ? BANNER_CUPOM_SHOPEE : BANNER_CUPOM_ML;
     try {
       const enviar = canal.tipo === "telegram" ? enviarFotoLocalTelegram : enviarFotoLocalWhatsapp;
-      await enviar(BANNER_CUPOM, legenda, canal.identificadorGrupo);
+      await enviar(banner, legenda, canal.identificadorGrupo);
       await cuponsRepo.registrarDisparo(cupom.id, canal.id, "enviado");
       return { cupomId: cupom.id, status: "enviado" };
     } catch (err) {

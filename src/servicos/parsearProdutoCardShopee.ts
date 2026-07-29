@@ -41,7 +41,10 @@ function extrairTitulo(texto: string, precos: PrecosExtraidos | null, cupom: str
 
   for (let i = 1; i < linhas.length; i++) {
     const linha = linhas[i];
-    if (/^https?:\/\//i.test(linha)) continue;
+    // Sem "^" de propósito: o link real quase sempre vem prefixado com um
+    // emoji ("🔗 https://...", "➡️ https://..."), então ancorar no início da
+    // linha deixava passar e a URL virava "título" por engano.
+    if (/https?:\/\//i.test(linha)) continue;
     if (cupom && linha === cupom) continue;
     if (precos && (linha.includes(String(precos.precoPromocional)) || /R\$|reais?/i.test(linha))) continue;
 
@@ -56,8 +59,17 @@ export function extrairProdutoCardShopee(texto: string): ProdutoCardShopeeDetect
   const urls = texto.match(REGEX_URL);
   if (!urls || urls.length === 0) return null;
 
-  const urlShopee = urls.find(ehUrlShopee);
-  if (!urlShopee) return null;
+  const urlsShopee = urls.filter(ehUrlShopee);
+  if (urlsShopee.length === 0) return null;
+
+  // Quando a mensagem tem dois links da Shopee, o de cima costuma ser o de
+  // "ativar o cupom" (ex.: "🎟️ Resgate o cupom de 50% OFF ➡️ link1") e o de
+  // baixo o do produto em si (ex.: "🔗 link2") — confirmado com exemplo real
+  // do usuário. É o do produto (o último) que precisa virar link de
+  // afiliado; usar o do cupom por engano manda o cliente pro lugar errado
+  // (ou perde a comissão, se o link de ativação não passar pela nossa conta
+  // de afiliado). Com um só link, não faz diferença.
+  const urlShopee = urlsShopee[urlsShopee.length - 1];
 
   const urlBruta = urlShopee.replace(/[.,;!?)\]]+$/, "");
   const cupom = extrairLinhaCupom(texto);

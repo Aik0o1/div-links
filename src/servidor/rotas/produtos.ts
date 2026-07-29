@@ -13,7 +13,7 @@ rotaProdutos.get("/", async (req, res) => {
   const produtos = await produtosRepo.listar({
     status: typeof status === "string" ? status : undefined,
     nicho: typeof nicho === "string" ? nicho : undefined,
-    fonte: fonte === "mercado_livre" || fonte === "monitorados" ? fonte : undefined,
+    fonte: fonte === "mercado_livre" || fonte === "shopee" || fonte === "monitorados" ? fonte : undefined,
   });
   res.json(produtos);
 });

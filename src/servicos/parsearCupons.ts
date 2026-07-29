@@ -1,5 +1,35 @@
+export type PlataformaCupom = "shopee" | "mercado_livre";
+
+const REGEX_URL_GENERICA = /(https?:\/\/[^\s]+)/g;
+
+/**
+ * Detecta se a mensagem de cupom veio de um post sobre a Shopee (link
+ * shopee.com.br/shope.ee em algum lugar do texto) — o mesmo grupo monitorado
+ * às vezes mistura cupom do ML e da Shopee, e antes disso o repasse sempre
+ * rotulava tudo como "Mercado Livre" e usava o link fixo do ML, mesmo pra
+ * cupom da Shopee de verdade. Sem link identificável, assume Mercado Livre
+ * (comportamento histórico, formato mais comum nesses grupos).
+ */
+export function detectarPlataformaCupom(texto: string): { plataforma: PlataformaCupom; urlShopee: string | null } {
+  const urls = texto.match(REGEX_URL_GENERICA) ?? [];
+  const urlShopee = urls.find((u) => {
+    const baixa = u.toLowerCase();
+    return baixa.includes("shopee.com") || baixa.includes("shope.ee");
+  });
+  return urlShopee
+    ? { plataforma: "shopee", urlShopee: urlShopee.replace(/[.,;!?)\]]+$/, "") }
+    : { plataforma: "mercado_livre", urlShopee: null };
+}
+
 export interface CupomExtraido {
-  codigo: string;
+  /**
+   * null quando é um voucher sem código pra digitar — comum na Shopee, um
+   * único link já ativa um lote de faixas de desconto ("Resgate os cupons
+   * aqui" + 1 link só, ver pareceDescricaoDeDesconto/Formato D). Nesse caso
+   * a descrição crua vem em `descricaoLivre`, os campos estruturados abaixo
+   * não se aplicam.
+   */
+  codigo: string | null;
   percentual: number | null;
   valorFixo: number | null;
   minimo: number | null;
@@ -9,6 +39,8 @@ export interface CupomExtraido {
    * "XX% OFF em R$Y+"). Semântica oposta, não pode ir no mesmo campo.
    */
   limiteDesconto: number | null;
+  /** Só preenchido no voucher sem código (Formato D) — ver comentário em `codigo`. */
+  descricaoLivre?: string;
 }
 
 // Formato A — observado no primeiro grupo monitorado (Telegram, "cupom
@@ -39,8 +71,27 @@ const REGEX_FORMATO_B_PERCENTUAL_LIMITADO = /(\d{1,3})\s*%\s*OFF\s*limitado\s*a\
 const REGEX_HEADER_PERCENTUAL_COMPARTILHADO = /CUPOM\s+DE\s+(\d{1,3})\s*%\s*OFF/i;
 const REGEX_CODIGO_APOS_SETA = /🎟️?\s*👉\s*([A-Z0-9]{3,20})/;
 
+// Formato D — comum na Shopee: várias faixas de desconto SEM código nenhum
+// pra digitar, um único link no fim já resgata o lote inteiro de uma vez
+// ("Resgate os cupons aqui" + 1 link). Cada linha começando com 🎟️ que
+// menciona desconto ("OFF" + "%" ou "R$" em qualquer ordem/distância — ex.:
+// "R$10 OFF acima de R$99" tem o valor ENTRE o "R$" e o "OFF", não colado)
+// vira um item — mantém a descrição como veio, sem decompor em
+// percentual/mínimo estruturados (o texto varia demais: "limitado a R$20
+// FULL", "acima de R$99" etc.). Só entra se nenhum dos formatos com código
+// (A/B/C) achou nada nessa mensagem.
+const REGEX_TICKET_PREFIXO = /^🎟️?\s*(.+)$/;
+function pareceDescricaoDeDesconto(texto: string): boolean {
+  return /OFF/i.test(texto) && (texto.includes("%") || /R\$/i.test(texto));
+}
+
 function paraNumero(texto: string): number {
   return Number(texto.replace(/\./g, "").replace(",", "."));
+}
+
+function ehLinhaCodigoBValido(linha: string): boolean {
+  const match = linha.match(REGEX_FORMATO_B_CODIGO);
+  return !!match && /^[A-Z0-9]+$/.test(match[1]);
 }
 
 export function extrairCupons(texto: string): CupomExtraido[] {
@@ -77,11 +128,24 @@ export function extrairCupons(texto: string): CupomExtraido[] {
     }
 
     const matchCodigoB = linhas[i].match(REGEX_FORMATO_B_CODIGO);
-    if (matchCodigoB) {
-      const codigo = matchCodigoB[1].toUpperCase();
+    // REGEX_FORMATO_B_CODIGO é case-insensitive só pro rótulo ("Cupom:"/"cupom:")
+    // — o CÓDIGO em si precisa estar em maiúsculas no texto original, senão
+    // qualquer palavra normal logo depois de "cupom" vira "código" por engano
+    // (bug real: "Cupom Shopee Exclusivo de 15% OFF..." capturou "Shopee"
+    // como se fosse o código e mandou um cupom "SHOPEE" inexistente pro
+    // canal — mesma classe de bug já corrigida no Formato A, que nunca teve
+    // essa checagem no Formato B).
+    if (matchCodigoB && /^[A-Z0-9]+$/.test(matchCodigoB[1])) {
+      const codigo = matchCodigoB[1];
       if (codigosVistos.has(codigo)) continue;
 
       for (let j = i; j < Math.min(i + 3, linhas.length); j++) {
+        // Sem isso, um "cupom:" que não tem desconto na própria janela (ex.:
+        // um cabeçalho tipo "*NOVO CUPOM SHOPEE*", que também casa com esse
+        // regex por acidente) podia continuar procurando e "roubar" a linha
+        // de desconto que na verdade pertence ao PRÓXIMO cupom real da
+        // mensagem — mesmo bug de vazamento que o Formato A já evitava.
+        if (j > i && ehLinhaCodigoBValido(linhas[j])) break;
         const matchValorFixo = linhas[j].match(REGEX_FORMATO_B_VALOR_FIXO);
         if (matchValorFixo) {
           resultado.push({
@@ -147,13 +211,50 @@ export function extrairCupons(texto: string): CupomExtraido[] {
     }
   }
 
+  // Formato D só entra se A/B/C não acharam nenhum cupom com código nessa
+  // mensagem (ver comentário acima da função pareceDescricaoDeDesconto).
+  if (resultado.length === 0) {
+    const candidatosD: CupomExtraido[] = [];
+    const descricoesVistas = new Set<string>();
+    for (const linha of linhas) {
+      const matchTicket = linha.trim().match(REGEX_TICKET_PREFIXO);
+      if (!matchTicket) continue;
+      const descricaoLivre = matchTicket[1].trim();
+      if (!pareceDescricaoDeDesconto(descricaoLivre)) continue;
+      if (descricoesVistas.has(descricaoLivre)) continue;
+      candidatosD.push({ codigo: null, percentual: null, valorFixo: null, minimo: null, limiteDesconto: null, descricaoLivre });
+      descricoesVistas.add(descricaoLivre);
+    }
+    // Só conta como "lista de cupons" de verdade com 2+ faixas — uma linha
+    // só de "🎟️ ... OFF" é comum também num post de PRODUTO único com cupom
+    // embutido (ver parsearProdutoCardShopee.ts), que tem que continuar
+    // caindo no fluxo de produto (com título/preço/imagem/link do produto),
+    // não virar uma "lista de cupons" genérica sem nada disso. Bug real:
+    // post de "Capa De Chuva..." com 1 cupom foi engolido aqui, perdendo o
+    // produto inteiro.
+    if (candidatosD.length >= 2) {
+      resultado.push(...candidatosD);
+    }
+  }
+
   return resultado;
 }
 
-export function formatarLegendaCupons(cupons: CupomExtraido[], linkFixo: string): string {
-  const linhas: string[] = ["*NOVOS CUPONS MERCADO LIVRE*", ""];
+export function formatarLegendaCupons(
+  cupons: CupomExtraido[],
+  link: string,
+  plataforma: PlataformaCupom = "mercado_livre",
+): string {
+  const titulo = plataforma === "shopee" ? "*NOVOS CUPONS SHOPEE*" : "*NOVOS CUPONS MERCADO LIVRE*";
+  const linhas: string[] = [titulo, ""];
 
   for (const cupom of cupons) {
+    if (cupom.codigo === null) {
+      // Formato D (voucher sem código) — só a descrição, sem linha de
+      // "cupom: X" (não existe código nenhum pra mostrar).
+      linhas.push(`🎟️ ${cupom.descricaoLivre}`, "");
+      continue;
+    }
     linhas.push(`⚠️ cupom: ${cupom.codigo} 🎫`);
     if (cupom.valorFixo !== null) {
       linhas.push(
@@ -170,7 +271,7 @@ export function formatarLegendaCupons(cupons: CupomExtraido[], linkFixo: string)
   }
 
   linhas.push("Ative o cupom aqui e use no produto desejado");
-  linhas.push(linkFixo);
+  linhas.push(link);
 
   return linhas.join("\n");
 }

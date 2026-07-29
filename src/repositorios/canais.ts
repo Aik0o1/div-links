@@ -6,6 +6,8 @@ export interface CanalRow {
   tipo: "whatsapp" | "telegram";
   identificadorGrupo: string;
   categoriasPermitidas: string[] | null;
+  /** Restringe por origem de captura ("mercado_livre" | "shopee" | "monitorados") — vazio/null aceita qualquer uma. */
+  fontesPermitidas: string[] | null;
   descontoMinimo: number;
   intervaloMinimoMinutos: number;
   ativo: boolean;
@@ -18,6 +20,7 @@ function paraCanal(row: any): CanalRow {
     tipo: row.tipo,
     identificadorGrupo: row.identificador_grupo,
     categoriasPermitidas: row.categorias_permitidas,
+    fontesPermitidas: row.fontes_permitidas,
     descontoMinimo: Number(row.desconto_minimo),
     intervaloMinimoMinutos: row.intervalo_minimo_minutos,
     ativo: row.ativo,
@@ -39,18 +42,20 @@ export async function criar(dados: {
   tipo: "whatsapp" | "telegram";
   identificadorGrupo: string;
   categoriasPermitidas?: string[] | null;
+  fontesPermitidas?: string[] | null;
   descontoMinimo?: number;
   intervaloMinimoMinutos?: number;
 }): Promise<CanalRow> {
   const { rows } = await pool.query(
-    `INSERT INTO canais_destino (nome, tipo, identificador_grupo, categorias_permitidas, desconto_minimo, intervalo_minimo_minutos)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO canais_destino (nome, tipo, identificador_grupo, categorias_permitidas, fontes_permitidas, desconto_minimo, intervalo_minimo_minutos)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING *`,
     [
       dados.nome ?? null,
       dados.tipo,
       dados.identificadorGrupo,
       dados.categoriasPermitidas ?? null,
+      dados.fontesPermitidas ?? null,
       dados.descontoMinimo ?? 0,
       dados.intervaloMinimoMinutos ?? 15,
     ],
@@ -64,30 +69,40 @@ export async function atualizar(
     nome: string | null;
     identificadorGrupo: string;
     categoriasPermitidas: string[] | null;
+    fontesPermitidas: string[] | null;
     descontoMinimo: number;
     intervaloMinimoMinutos: number;
     ativo: boolean;
   }>,
 ): Promise<CanalRow | null> {
+  // Só altera as colunas cujo campo veio de verdade no request (`!==
+  // undefined`) — diferente de usar COALESCE, isso deixa `null`/`[]` ser um
+  // valor válido e intencional (ex.: "sem restrição de nicho/origem"), sem
+  // exigir que todo PUT sempre mande todos os campos juntos pra não apagar
+  // os outros sem querer (o painel de config e o de dados básicos do canal
+  // salvam separado, ver app.js).
+  const sets: string[] = [];
+  const valores: unknown[] = [id];
+
+  function definir(coluna: string, valor: unknown) {
+    valores.push(valor);
+    sets.push(`${coluna} = $${valores.length}`);
+  }
+
+  if (dados.nome !== undefined) definir("nome", dados.nome);
+  if (dados.identificadorGrupo !== undefined) definir("identificador_grupo", dados.identificadorGrupo);
+  if (dados.categoriasPermitidas !== undefined) definir("categorias_permitidas", dados.categoriasPermitidas);
+  if (dados.fontesPermitidas !== undefined) definir("fontes_permitidas", dados.fontesPermitidas);
+  if (dados.descontoMinimo !== undefined) definir("desconto_minimo", dados.descontoMinimo);
+  if (dados.intervaloMinimoMinutos !== undefined)
+    definir("intervalo_minimo_minutos", dados.intervaloMinimoMinutos);
+  if (dados.ativo !== undefined) definir("ativo", dados.ativo);
+
+  if (sets.length === 0) return buscarPorId(id);
+
   const { rows } = await pool.query(
-    `UPDATE canais_destino SET
-       nome = COALESCE($2, nome),
-       identificador_grupo = COALESCE($3, identificador_grupo),
-       categorias_permitidas = COALESCE($4, categorias_permitidas),
-       desconto_minimo = COALESCE($5, desconto_minimo),
-       intervalo_minimo_minutos = COALESCE($6, intervalo_minimo_minutos),
-       ativo = COALESCE($7, ativo)
-     WHERE id = $1
-     RETURNING *`,
-    [
-      id,
-      dados.nome ?? null,
-      dados.identificadorGrupo ?? null,
-      dados.categoriasPermitidas ?? null,
-      dados.descontoMinimo ?? null,
-      dados.intervaloMinimoMinutos ?? null,
-      dados.ativo ?? null,
-    ],
+    `UPDATE canais_destino SET ${sets.join(", ")} WHERE id = $1 RETURNING *`,
+    valores,
   );
   return rows[0] ? paraCanal(rows[0]) : null;
 }

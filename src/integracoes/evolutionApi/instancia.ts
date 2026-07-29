@@ -66,6 +66,24 @@ export async function listarGrupos(): Promise<GrupoWhatsapp[]> {
 }
 
 /**
+ * Baixa e decodifica a imagem de uma mensagem do WhatsApp — mídia chega
+ * criptografada ponta a ponta (o webhook só entrega metadados: url do blob
+ * criptografado + mediaKey), então precisa desse endpoint da própria
+ * Evolution (que já tem a sessão conectada e sabe descriptografar) pra
+ * conseguir o arquivo de verdade. Espera o objeto de mensagem cru do
+ * webhook (com `key` e `message.imageMessage`), igual ele chega em
+ * `messages.upsert`.
+ */
+export async function obterMidiaBase64(mensagem: unknown): Promise<string | null> {
+  const { instancia } = requiredEvolutionConfig();
+  const resposta = await chamarEvolutionApi(`/chat/getBase64FromMediaMessage/${instancia}`, {
+    method: "POST",
+    body: { message: mensagem },
+  });
+  return resposta?.base64 ?? null;
+}
+
+/**
  * Configura o webhook da instância pra entregar MESSAGES_UPSERT (mensagem
  * nova, inclusive de grupo) pro nosso painel — `host.docker.internal`
  * porque a Evolution roda dentro do Docker e o painel roda fora (npm run
