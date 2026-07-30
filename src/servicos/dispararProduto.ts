@@ -176,7 +176,7 @@ export async function canaisElegiveis(produtoId: number): Promise<CanalComElegib
   return resultado;
 }
 
-/** Acha o próximo produto capturado (mais antigo primeiro) elegível pras regras do canal. */
+/** Acha o próximo produto capturado elegível pras regras do canal — grupo monitorado sempre primeiro, resto intercalado entre ML/Shopee (ver comentário abaixo). */
 export async function proximoProdutoElegivel(canal: CanalRow): Promise<ProdutoRow | null> {
   // Canal sem categorias definidas = "geral" = aceita produto de qualquer
   // nicho (ver nichoElegivel acima) — passa `null` pra não filtrar por
@@ -190,14 +190,34 @@ export async function proximoProdutoElegivel(canal: CanalRow): Promise<ProdutoRo
   // no loop abaixo, em JS, já que SQL só alarga, não estreita esse caso.
   const candidatos = await produtosRepo.listarPorNichos(nichosAceitos, "capturado", canal.gruposMonitoradosPermitidos);
 
+  const elegiveis: ProdutoRow[] = [];
   for (const produto of candidatos) {
     if (!fonteElegivel(canal, produto.fonte)) continue;
     if (grupoMonitoradoStatus(canal, produto) === "bloqueado") continue;
     const desconto = calcularDesconto(produto.precoOriginal, produto.precoPromocional);
-    if (desconto >= canal.descontoMinimo) return produto;
+    if (desconto >= canal.descontoMinimo) elegiveis.push(produto);
   }
+  if (elegiveis.length === 0) return null;
 
-  return null;
+  // `candidatos` já vem ordenado com grupo monitorado primeiro (ver
+  // FONTE_PRIORITARIA em listarPorNichos) — se o primeiro elegível já é de
+  // grupo monitorado, retorna direto, sem mexer em intercalação de
+  // plataforma (prioridade de grupo monitorado nunca é afetada por isso).
+  const primeiro = elegiveis[0];
+  if (FONTES_MONITORADAS.has(primeiro.fonte)) return primeiro;
+
+  // Daqui pra baixo só sobrou captura em massa (ML/Shopee) — intercala entre
+  // as duas plataformas em vez de FIFO estrito por `criado_em`. Sem isso,
+  // uma leva de captura mais antiga de uma plataforma monopoliza a fila
+  // inteira até esgotar, enquanto a outra nunca sai (bug real: leva de
+  // Shopee capturada minutos antes do ML travando o ML por horas, já que o
+  // canal só dispara 1 produto a cada `intervaloMinimoMinutos`).
+  const ultimaPlataforma = await configuracoesRepo.obterUltimaPlataformaBulkEnviada();
+  const plataformaDesejada = ultimaPlataforma === "mercado_livre" ? "shopee" : "mercado_livre";
+
+  const escolhido = elegiveis.find((p) => plataformaAfiliado(p.fonte) === plataformaDesejada) ?? primeiro;
+  await configuracoesRepo.definirUltimaPlataformaBulkEnviada(plataformaAfiliado(escolhido.fonte));
+  return escolhido;
 }
 
 export async function dispararParaCanal(produtoId: number, canalId: number): Promise<void> {
@@ -238,12 +258,24 @@ export async function dispararParaCanal(produtoId: number, canalId: number): Pro
     // ficar diferente do que já foi guardado).
     const linkAfiliado =
       produto.urlAfiliado ?? (await gerarLinkAfiliado(plataformaAfiliado(produto.fonte), produto.urlOriginal));
+
+    // O link de "resgatar cupom" mostrado no produto NUNCA é o link de
+    // ativação raspado do post do grupo monitorado (produto.linkCupom) — esse
+    // link rastreia a comissão pro afiliado DONO do grupo, não pro usuário.
+    // Sempre usa o link de cupons Shopee fixo do próprio usuário (decisão
+    // explícita dele), mesmo sendo genérico e não específico do produto.
+    const linkCupom =
+      produto.cupom && FONTES_SHOPEE.has(produto.fonte)
+        ? ((await configuracoesRepo.obterLinkCupomShopeeFixo()) ?? undefined)
+        : undefined;
+
     const legenda = gerarLegenda({
       titulo: produto.titulo,
       chamada,
       precoOriginal: produto.precoOriginal ?? undefined,
       precoPromocional: produto.precoPromocional ?? undefined,
       cupom: produto.cupom ?? undefined,
+      linkCupom,
       precoNoPix: produto.precoNoPix,
       linkAfiliado,
     });

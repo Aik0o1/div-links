@@ -18,6 +18,8 @@ export interface ProdutoRow {
   criadoEm: string;
   /** Id do grupo monitorado (WhatsApp JID ou Telegram chat id) que originou esse produto — null pra captura em massa ML/Shopee. */
   grupoOrigemId: string | null;
+  /** Link de ativação do cupom no anúncio (Shopee via grupo monitorado, quando o post trazia 2 links) — distinto do link de afiliado do produto. */
+  linkCupom: string | null;
 }
 
 export interface NovoProduto {
@@ -34,6 +36,8 @@ export interface NovoProduto {
   urlAfiliado?: string;
   /** Só pra captura via grupo monitorado — ver ProdutoRow.grupoOrigemId. */
   grupoOrigemId?: string;
+  /** Ver ProdutoRow.linkCupom. */
+  linkCupom?: string;
 }
 
 function paraProduto(row: any): ProdutoRow {
@@ -54,6 +58,7 @@ function paraProduto(row: any): ProdutoRow {
     status: row.status,
     criadoEm: row.criado_em,
     grupoOrigemId: row.grupo_origem_id,
+    linkCupom: row.link_cupom,
   };
 }
 
@@ -77,8 +82,8 @@ export async function inserirSeNovo(produto: NovoProduto): Promise<ProdutoRow | 
   const hash = calcularHash(produto);
 
   const { rows } = await pool.query(
-    `INSERT INTO produtos (fonte, url_original, titulo, preco_original, preco_promocional, imagem_url, cupom, nicho, preco_no_pix, url_afiliado, hash_conteudo, grupo_origem_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    `INSERT INTO produtos (fonte, url_original, titulo, preco_original, preco_promocional, imagem_url, cupom, nicho, preco_no_pix, url_afiliado, hash_conteudo, grupo_origem_id, link_cupom)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
      ON CONFLICT (hash_conteudo) DO NOTHING
      RETURNING *`,
     [
@@ -94,6 +99,7 @@ export async function inserirSeNovo(produto: NovoProduto): Promise<ProdutoRow | 
       produto.urlAfiliado ?? null,
       hash,
       produto.grupoOrigemId ?? null,
+      produto.linkCupom ?? null,
     ],
   );
 

@@ -46,6 +46,11 @@ export function gerarLegenda(p: ParametrosLegenda): string {
   // estruturar só um código), mas sempre em negrito com ⚠️, pra destacar.
   if (p.cupom) {
     linhas.push(`⚠️ *${limparLinhaCupom(p.cupom)}*`);
+    // Link de ATIVAR o cupom no anúncio, distinto do link de afiliado do
+    // produto (ver ProdutoRow.linkCupom) — sem ele, a legenda menciona
+    // "resgate o cupom" mas não dá pro cliente clicar em lugar nenhum pra
+    // ativar (bug real reportado pelo usuário).
+    if (p.linkCupom) linhas.push(p.linkCupom);
   }
 
   linhas.push("", `Link: ${p.linkAfiliado}`);

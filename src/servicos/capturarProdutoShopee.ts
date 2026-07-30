@@ -1,4 +1,5 @@
 import * as produtosRepo from "../repositorios/produtos.js";
+import { buscarImagemOficialProduto } from "../integracoes/shopee/api.js";
 import { logger } from "../config/logger.js";
 import type { ProdutoCardShopeeDetectado } from "./parsearProdutoCardShopee.js";
 
@@ -12,11 +13,13 @@ const NICHO_TESTE_SHOPEE = "shopee";
 
 /**
  * Diferente do Mercado Livre: sem scraping da página real (site bloqueia
- * automação) nem API de dados de produto (a API oficial da Shopee só gera
- * link de afiliado) — título, preço e cupom vêm do próprio texto do post
- * (ver parsearProdutoCardShopee.ts), e a imagem é a do post (baixada do
- * Telegram, se tiver) — decisão explícita do usuário, ciente do risco de
- * marca d'água de outro canal.
+ * automação) — título, preço e cupom vêm do próprio texto do post (ver
+ * parsearProdutoCardShopee.ts). A IMAGEM nunca vem do post — já veio com
+ * logo/marca d'água do grupo monitorado em produção (bug real relatado pelo
+ * usuário) — sempre busca a imagem oficial da Shopee via API
+ * (buscarImagemOficialProduto, resolve o link pro shopId/itemId e consulta
+ * productOfferV2). Sem imagem oficial disponível, o produto é descartado —
+ * nunca cai de volta pra imagem do post.
  *
  * O link de afiliado NÃO é gerado aqui — só na hora do disparo (mesmo
  * padrão do Mercado Livre, ver dispararProduto.ts), guardamos só a URL
@@ -25,11 +28,25 @@ const NICHO_TESTE_SHOPEE = "shopee";
 export async function processarProdutoDetectadoShopee(
   produto: ProdutoCardShopeeDetectado,
   origem: OrigemGrupoMonitorado,
-  caminhoImagem: string | undefined,
   grupoId?: string,
 ): Promise<void> {
   if (!produto.titulo) {
     logger.debug({ urlBruta: produto.urlBruta }, "produto Shopee sem título reconhecível no post, ignorado");
+    return;
+  }
+
+  let imagemUrl: string | null;
+  try {
+    imagemUrl = await buscarImagemOficialProduto(produto.urlBruta);
+  } catch (err) {
+    logger.warn({ err, urlBruta: produto.urlBruta }, "falha ao buscar imagem oficial do produto Shopee, ignorado");
+    return;
+  }
+  if (!imagemUrl) {
+    logger.warn(
+      { urlBruta: produto.urlBruta },
+      "não foi possível resolver a imagem oficial do produto Shopee (link mudou de formato ou produto saiu do ar) — ignorado, nunca usa a imagem do post",
+    );
     return;
   }
 
@@ -40,11 +57,12 @@ export async function processarProdutoDetectadoShopee(
       titulo: produto.titulo,
       precoOriginal: produto.precos?.precoOriginal ?? undefined,
       precoPromocional: produto.precos?.precoPromocional,
-      imagemUrl: caminhoImagem,
+      imagemUrl,
       cupom: produto.cupom ?? undefined,
       nicho: NICHO_TESTE_SHOPEE,
       precoNoPix: produto.precos?.noPix ?? false,
       grupoOrigemId: grupoId,
+      linkCupom: produto.linkCupom ?? undefined,
     });
 
     if (resultado) {

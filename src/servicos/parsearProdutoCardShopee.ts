@@ -4,6 +4,8 @@ export interface ProdutoCardShopeeDetectado {
   urlBruta: string;
   titulo: string | null;
   cupom: string | null;
+  /** Link de ativação do cupom no anúncio (o primeiro link, quando o post tem 2) — distinto do link do produto, ver comentário abaixo. Null quando só há 1 link (nada a diferenciar). */
+  linkCupom: string | null;
   precos: PrecosExtraidos | null;
 }
 
@@ -70,11 +72,16 @@ export function extrairProdutoCardShopee(texto: string): ProdutoCardShopeeDetect
   // (ou perde a comissão, se o link de ativação não passar pela nossa conta
   // de afiliado). Com um só link, não faz diferença.
   const urlShopee = urlsShopee[urlsShopee.length - 1];
+  // Guarda o link de ativação do cupom também (quando existe) — sem ele, a
+  // legenda menciona "resgate o cupom" mas não dá pro cliente clicar em
+  // lugar nenhum pra ativar (bug real reportado pelo usuário). Não vira
+  // link de afiliado (não é o produto), repassado como veio no post.
+  const linkCupom = urlsShopee.length >= 2 ? urlsShopee[0].replace(/[.,;!?)\]]+$/, "") : null;
 
   const urlBruta = urlShopee.replace(/[.,;!?)\]]+$/, "");
   const cupom = extrairLinhaCupom(texto);
   const precos = extrairPrecos(texto);
   const titulo = extrairTitulo(texto, precos, cupom);
 
-  return { urlBruta, titulo, cupom, precos };
+  return { urlBruta, titulo, cupom, linkCupom, precos };
 }
