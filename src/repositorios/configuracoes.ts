@@ -98,6 +98,23 @@ export async function definirLinkCupomFixo(link: string): Promise<void> {
   await definir("link_cupom_fixo", link);
 }
 
+/**
+ * Link fixo de cupons da Shopee do próprio usuário — usado como o link de
+ * "resgatar o cupom" mostrado em produto Shopee de grupo monitorado, no
+ * lugar do link de ativação específico raspado do post original. Decisão
+ * explícita do usuário: o link do post é de rastreamento de OUTRO afiliado
+ * (o do grupo monitorado), então usar ele faria a comissão do cupom ir pro
+ * dono do grupo, não pro usuário — sempre usa o link próprio, mesmo que
+ * genérico (não específico daquele produto).
+ */
+export async function obterLinkCupomShopeeFixo(): Promise<string | null> {
+  return obter("link_cupom_shopee_fixo");
+}
+
+export async function definirLinkCupomShopeeFixo(link: string): Promise<void> {
+  await definir("link_cupom_shopee_fixo", link);
+}
+
 /** Grupos do WhatsApp monitorados (mesmo conceito da lista do Telegram, seção 2.7/2.8). */
 export async function obterWhatsappGruposMonitorados(): Promise<GrupoMonitoradoConfig[]> {
   const valor = await obter("whatsapp_grupos_monitorados");
@@ -116,6 +133,22 @@ export async function obterChamadaIAAtiva(): Promise<boolean> {
 
 export async function definirChamadaIAAtiva(ativa: boolean): Promise<void> {
   await definir("chamada_ia_ativa", String(ativa));
+}
+
+/**
+ * Última plataforma de captura em massa (ML ou Shopee) escolhida no disparo
+ * automático — usada pra intercalar entre as duas em vez de FIFO estrito por
+ * `criado_em` (ver proximoProdutoElegivel em dispararProduto.ts). Sem isso,
+ * uma leva de captura mais antiga de uma plataforma monopoliza a fila
+ * inteira enquanto a outra nunca sai (bug real: leva de Shopee travando o ML
+ * por horas). Não afeta produto de grupo monitorado, que sempre fura fila.
+ */
+export async function obterUltimaPlataformaBulkEnviada(): Promise<string | null> {
+  return obter("ultima_plataforma_bulk_enviada");
+}
+
+export async function definirUltimaPlataformaBulkEnviada(plataforma: string): Promise<void> {
+  await definir("ultima_plataforma_bulk_enviada", plataforma);
 }
 
 export interface ShopeeConfig {

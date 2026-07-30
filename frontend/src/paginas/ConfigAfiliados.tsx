@@ -19,6 +19,7 @@ export default function ConfigAfiliados() {
   const [chamadaIAAtiva, setChamadaIAAtiva] = useState(false);
   const [descontoMinimo, setDescontoMinimo] = useState("0");
   const [linkCupomFixo, setLinkCupomFixo] = useState("");
+  const [linkCupomShopeeFixo, setLinkCupomShopeeFixo] = useState("");
   const [salvandoConfig, setSalvandoConfig] = useState(false);
 
   const carregar = useCallback(async () => {
@@ -26,13 +27,19 @@ export default function ConfigAfiliados() {
       const [status, shopee, config] = await Promise.all([
         api<{ chrome: { conectado: boolean } }>("/status"),
         api<{ appId: string; configurado: boolean }>("/configuracoes/shopee"),
-        api<{ descontoMinimo: number; linkCupomFixo: string | null; chamadaIAAtiva: boolean }>("/configuracoes"),
+        api<{
+          descontoMinimo: number;
+          linkCupomFixo: string | null;
+          linkCupomShopeeFixo: string | null;
+          chamadaIAAtiva: boolean;
+        }>("/configuracoes"),
       ]);
       setChromeConectado(status.chrome.conectado);
       setShopeeAppId(shopee.appId);
       setShopeeConfigurado(shopee.configurado);
       setDescontoMinimo(String(config.descontoMinimo));
       setLinkCupomFixo(config.linkCupomFixo ?? "");
+      setLinkCupomShopeeFixo(config.linkCupomShopeeFixo ?? "");
       setChamadaIAAtiva(config.chamadaIAAtiva);
     } catch (err) {
       toast.error(mensagemAmigavel(err));
@@ -86,7 +93,7 @@ export default function ConfigAfiliados() {
     try {
       await api("/configuracoes", {
         method: "PUT",
-        body: JSON.stringify({ descontoMinimo: Number(descontoMinimo), linkCupomFixo }),
+        body: JSON.stringify({ descontoMinimo: Number(descontoMinimo), linkCupomFixo, linkCupomShopeeFixo }),
       });
       toast.success("Configuração salva.");
     } catch (err) {
@@ -192,6 +199,15 @@ export default function ConfigAfiliados() {
             placeholder="https://meli.la/xxxxxxx"
             value={linkCupomFixo}
             onChange={(e) => setLinkCupomFixo(e.target.value)}
+          />
+        </div>
+        <div className="flex flex-1 flex-col gap-1.5">
+          <Label htmlFor="link-cupom-shopee-fixo">Link fixo de cupons Shopee (produto de grupo monitorado)</Label>
+          <Input
+            id="link-cupom-shopee-fixo"
+            placeholder="https://s.shopee.com.br/xxxxxxx"
+            value={linkCupomShopeeFixo}
+            onChange={(e) => setLinkCupomShopeeFixo(e.target.value)}
           />
         </div>
         <Button onClick={salvarConfigGeral} disabled={salvandoConfig}>
