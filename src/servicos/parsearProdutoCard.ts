@@ -27,6 +27,11 @@ const REGEX_LINHA_CUPOM = /cupo(?:m|ns)/i;
 // valor (ver REGEX_PIX abaixo) — não entra no valor numérico.
 const REGEX_PRECO_DE_POR = /De:?\s*R?\$?\s*([\d.,]+)\s*(?:\|\s*)?Por:?\s*R?\$?\s*([\d.,]+)([^\n]*)/i;
 const REGEX_PRECO_POR = /Por:?\s*R?\$?\s*([\d.,]+)([^\n]*)/i;
+// Último recurso: linha com "R$<valor>" solto, sem "De"/"Por" nenhum (ex.:
+// "💵 R$ 77", "💵 R$ 645,21 no Pix") — formato real visto em post de grupo
+// monitorado. Só considera linha que NÃO menciona cupom, pra não confundir
+// com um valor de desconto tipo "cupom de R$40 OFF" (que também tem "R$").
+const REGEX_PRECO_SOLTO = /R\$\s*([\d.,]+)([^\n]*)/i;
 const REGEX_PIX = /pix/i;
 
 function paraNumero(texto: string): number {
@@ -65,6 +70,12 @@ export function extrairPrecos(texto: string): PrecosExtraidos | null {
   const matchPor = texto.match(REGEX_PRECO_POR);
   if (matchPor) {
     return { precoOriginal: null, precoPromocional: paraNumero(matchPor[1]), noPix: REGEX_PIX.test(matchPor[2]) };
+  }
+
+  const linhaPrecoSolto = texto.split("\n").find((l) => REGEX_PRECO_SOLTO.test(l) && !REGEX_LINHA_CUPOM.test(l));
+  const matchSolto = linhaPrecoSolto?.match(REGEX_PRECO_SOLTO);
+  if (matchSolto) {
+    return { precoOriginal: null, precoPromocional: paraNumero(matchSolto[1]), noPix: REGEX_PIX.test(matchSolto[2]) };
   }
 
   return null;
