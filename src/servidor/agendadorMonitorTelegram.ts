@@ -19,8 +19,8 @@ export function iniciarAgendadorMonitorTelegram(): void {
     if (emAndamento) return;
     emAndamento = true;
     try {
-      await verificarNovasMensagens((texto, grupoId, nicho, baixarImagem) =>
-        processarMensagemGrupo(texto, "telegram", nicho, baixarImagem, grupoId),
+      await verificarNovasMensagens((texto, grupoId, nicho) =>
+        processarMensagemGrupo(texto, "telegram", nicho, grupoId),
       );
     } catch (err) {
       logger.error({ err }, "falha ao verificar mensagens novas do monitor de Telegram");

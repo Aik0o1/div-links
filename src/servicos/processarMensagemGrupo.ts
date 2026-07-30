@@ -18,16 +18,14 @@ import { logger } from "../config/logger.js";
  *
  * `origem` e `nicho` só importam pro caminho de produto (fila prioritária e
  * roteamento por nicho, respectivamente) — o fluxo de cupons genéricos é
- * igual pras duas plataformas e não tem conceito de nicho. `baixarImagem` só
- * é usado pelo caminho da Shopee (busca a imagem do post) — vem de
- * telegramListener/cliente.ts, sem equivalente no WhatsApp ainda (webhook
- * só extrai texto/legenda hoje, não baixa mídia).
+ * igual pras duas plataformas e não tem conceito de nicho. A imagem do
+ * produto Shopee nunca vem do post monitorado (ver capturarProdutoShopee.ts)
+ * — sempre busca a oficial via API, não precisa baixar nada aqui.
  */
 export async function processarMensagemGrupo(
   texto: string,
   origem: OrigemGrupoMonitorado,
   nicho: string,
-  baixarImagem?: () => Promise<string | undefined>,
   grupoId?: string,
 ): Promise<void> {
   if (extrairCupons(texto).length > 0) {
@@ -43,8 +41,7 @@ export async function processarMensagemGrupo(
 
   const produtoShopee = extrairProdutoCardShopee(texto);
   if (produtoShopee) {
-    const caminhoImagem = await baixarImagem?.();
-    await processarProdutoDetectadoShopee(produtoShopee, origem, caminhoImagem, grupoId);
+    await processarProdutoDetectadoShopee(produtoShopee, origem, grupoId);
     return;
   }
 

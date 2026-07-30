@@ -1,38 +1,9 @@
 import { Router } from "express";
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { statusInstancia, obterQrCode, listarGrupos, obterMidiaBase64 } from "../../integracoes/evolutionApi/instancia.js";
+import { statusInstancia, obterQrCode, listarGrupos } from "../../integracoes/evolutionApi/instancia.js";
 import * as configuracoesRepo from "../../repositorios/configuracoes.js";
 import type { GrupoMonitoradoConfig } from "../../repositorios/configuracoes.js";
 import { processarMensagemGrupo } from "../../servicos/processarMensagemGrupo.js";
 import { logger } from "../../config/logger.js";
-
-const RAIZ_PROJETO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-const DIR_IMAGENS_CAPTURADAS = path.join(RAIZ_PROJETO, "data", "imagens-capturadas");
-
-/**
- * Devolve uma função que baixa a imagem da mensagem SÓ SE for chamada (mesmo
- * padrão do Telegram, ver criarBaixadorImagem em telegramListener/cliente.ts)
- * — evita chamar a Evolution à toa pra mensagens que não precisam da imagem
- * (hoje, só a captura de produto Shopee).
- */
-function criarBaixadorImagemWhatsapp(dados: any): () => Promise<string | undefined> {
-  return async () => {
-    if (!dados.message?.imageMessage) return undefined;
-    try {
-      const base64 = await obterMidiaBase64(dados);
-      if (!base64) return undefined;
-      await mkdir(DIR_IMAGENS_CAPTURADAS, { recursive: true });
-      const caminho = path.join(DIR_IMAGENS_CAPTURADAS, `wa-${dados.key.id}.jpg`);
-      await writeFile(caminho, Buffer.from(base64, "base64"));
-      return caminho;
-    } catch (err) {
-      logger.warn({ err, msgId: dados.key?.id }, "falha ao baixar imagem da mensagem do WhatsApp, seguindo sem imagem");
-      return undefined;
-    }
-  };
-}
 
 export const rotaWhatsapp = Router();
 
@@ -108,7 +79,7 @@ rotaWhatsapp.post("/webhook", (req, res) => {
     .then((monitorados) => {
       const grupo = monitorados.find((g) => g.id === remoteJid);
       if (!grupo) return;
-      return processarMensagemGrupo(texto, "whatsapp", grupo.nicho, criarBaixadorImagemWhatsapp(dados), remoteJid);
+      return processarMensagemGrupo(texto, "whatsapp", grupo.nicho, remoteJid);
     })
     .catch((err) => {
       logger.error({ err, remoteJid }, "falha ao processar webhook do WhatsApp");
