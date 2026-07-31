@@ -5,10 +5,12 @@ export interface CupomRow {
   id: number;
   texto: string;
   recebidoEm: string;
+  /** Id do grupo monitorado (WhatsApp JID ou Telegram chat id) que originou esse cupom — null se veio de antes dessa coluna existir. */
+  grupoOrigemId: string | null;
 }
 
 function paraCupom(row: any): CupomRow {
-  return { id: row.id, texto: row.texto, recebidoEm: row.recebido_em };
+  return { id: row.id, texto: row.texto, recebidoEm: row.recebido_em, grupoOrigemId: row.grupo_origem_id };
 }
 
 export function hashTexto(texto: string): string {
@@ -16,14 +18,14 @@ export function hashTexto(texto: string): string {
 }
 
 /** Insere se o texto ainda não foi visto (dedup por hash); devolve null se já existia. */
-export async function inserirSeNovo(texto: string): Promise<CupomRow | null> {
+export async function inserirSeNovo(texto: string, grupoOrigemId?: string): Promise<CupomRow | null> {
   const hash = hashTexto(texto);
   const { rows } = await pool.query(
-    `INSERT INTO cupons_capturados (texto, hash_conteudo)
-     VALUES ($1, $2)
+    `INSERT INTO cupons_capturados (texto, hash_conteudo, grupo_origem_id)
+     VALUES ($1, $2, $3)
      ON CONFLICT (hash_conteudo) DO NOTHING
      RETURNING *`,
-    [texto, hash],
+    [texto, hash, grupoOrigemId ?? null],
   );
   return rows[0] ? paraCupom(rows[0]) : null;
 }
@@ -34,6 +36,21 @@ export async function listarRecentes(limite = 50): Promise<CupomRow[]> {
     [limite],
   );
   return rows.map(paraCupom);
+}
+
+export interface DisparoCupomRow {
+  canalId: number;
+  status: string;
+  enviadoEm: string | null;
+}
+
+/** Disparos (tentados ou enviados) desse cupom, um por canal em que foi tentado — pra mostrar na aba Cupons pra onde cada um foi (ou tentou ir). */
+export async function listarDisparosPorCupom(cupomId: number): Promise<DisparoCupomRow[]> {
+  const { rows } = await pool.query(
+    "SELECT canal_id, status, enviado_em FROM cupons_disparos WHERE cupom_id = $1 ORDER BY id ASC",
+    [cupomId],
+  );
+  return rows.map((r) => ({ canalId: r.canal_id, status: r.status, enviadoEm: r.enviado_em }));
 }
 
 // Cupom capturado há mais tempo que isso não entra mais na fila de

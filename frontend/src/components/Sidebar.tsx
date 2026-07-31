@@ -6,6 +6,7 @@ import {
   Radio,
   Satellite,
   Package,
+  Ticket,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,7 @@ const ITENS: { aba: Aba; label: string; Icon: LucideIcon }[] = [
   { aba: "canais", label: "Canais/Grupos", Icon: Radio },
   { aba: "monitorados", label: "Grupos monitorados", Icon: Satellite },
   { aba: "produtos", label: "Produtos", Icon: Package },
+  { aba: "cupons", label: "Cupons", Icon: Ticket },
 ];
 
 export function Sidebar({ abaAtiva, onMudarAba }: { abaAtiva: Aba; onMudarAba: (a: Aba) => void }) {

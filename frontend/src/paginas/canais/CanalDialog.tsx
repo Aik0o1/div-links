@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { api, mensagemAmigavel } from "@/lib/api";
+import { mensagemAmigavel, api } from "@/lib/api";
+import { buscarGruposMonitoradosDisponiveis, type GrupoMonitoradoOpcao } from "@/lib/gruposMonitorados";
 import {
   Dialog,
   DialogContent,
@@ -54,36 +55,6 @@ function estadoInicial(canal: CanalRow | null): FormState {
     fontesSelecionadas: canal?.fontesPermitidas ?? [],
     gruposSelecionados: canal?.gruposMonitoradosPermitidos ?? [],
   };
-}
-
-interface GrupoMonitoradoOpcao {
-  id: string;
-  nome: string;
-  plataforma: "whatsapp" | "telegram";
-}
-
-/** Combina as rotas de grupo monitorado + listagem já existentes (mesmo padrão de GruposMonitorados.tsx) — sem endpoint novo. */
-async function buscarGruposMonitoradosDisponiveis(): Promise<GrupoMonitoradoOpcao[]> {
-  const [wMonitorados, wGrupos, tStatus, tGrupos] = await Promise.all([
-    api<{ id: string; nicho: string }[]>("/whatsapp/grupos-monitorados").catch(() => []),
-    api<{ jid: string; nome: string }[]>("/whatsapp/grupos").catch(() => []),
-    api<{ gruposMonitorados: { id: string; nicho: string }[] }>("/telegram-listener/status").catch(() => ({
-      gruposMonitorados: [],
-    })),
-    api<{ id: string; nome: string }[]>("/telegram-listener/grupos").catch(() => []),
-  ]);
-
-  const nomesWhats = new Map(wGrupos.map((g) => [g.jid, g.nome]));
-  const nomesTelegram = new Map(tGrupos.map((g) => [g.id, g.nome]));
-
-  return [
-    ...wMonitorados.map((g) => ({ id: g.id, nome: nomesWhats.get(g.id) ?? g.id, plataforma: "whatsapp" as const })),
-    ...tStatus.gruposMonitorados.map((g) => ({
-      id: g.id,
-      nome: nomesTelegram.get(g.id) ?? g.id,
-      plataforma: "telegram" as const,
-    })),
-  ];
 }
 
 export function CanalDialog({ aberto, onFechar, canal, nichos, onSalvo }: Props) {

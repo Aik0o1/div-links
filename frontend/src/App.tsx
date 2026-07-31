@@ -8,6 +8,7 @@ import ConfigWhatsapp from "@/paginas/ConfigWhatsapp";
 import ConfigTelegram from "@/paginas/ConfigTelegram";
 import GruposMonitorados from "@/paginas/GruposMonitorados";
 import Produtos from "@/paginas/Produtos";
+import Cupons from "@/paginas/Cupons";
 
 export type Aba =
   | "dashboard"
@@ -16,7 +17,8 @@ export type Aba =
   | "telegram"
   | "canais"
   | "monitorados"
-  | "produtos";
+  | "produtos"
+  | "cupons";
 
 export default function App() {
   const [aba, setAba] = useState<Aba>("dashboard");
@@ -32,6 +34,7 @@ export default function App() {
         {aba === "canais" && <Canais />}
         {aba === "monitorados" && <GruposMonitorados />}
         {aba === "produtos" && <Produtos />}
+        {aba === "cupons" && <Cupons />}
       </main>
       <Toaster position="top-right" richColors />
     </div>
