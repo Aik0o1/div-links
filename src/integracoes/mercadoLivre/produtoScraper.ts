@@ -85,16 +85,6 @@ export async function buscarDadosProduto(url: string): Promise<DadosProdutoML | 
   }
 }
 
-function tokenizar(texto: string): string[] {
-  return (
-    texto
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[̀-ͯ]/g, "") // remove acentos (marcas de combinação após normalize NFD)
-      .match(/[a-z0-9]{3,}/g) ?? []
-  );
-}
-
 function limparUrlProduto(url: string): string {
   try {
     const u = new URL(url, "https://www.mercadolivre.com.br");
@@ -107,16 +97,15 @@ function limparUrlProduto(url: string): string {
 /**
  * Link de afiliado gerado pelo "Gerador de produtos recomendados" do ML
  * (`meli.la/...`) não aponta pro produto — resolve pra `/social/{usuario}`,
- * o perfil público do afiliado com VÁRIAS recomendações (mesmo componente
- * `.poly-card` da aba Ofertas). Não tem como saber qual é o produto certo só
- * pela URL, então casa por palavras em comum entre o texto original da
- * mensagem e o título de cada card — exige pelo menos 2 palavras batendo
- * pra aceitar (evita escolher o card errado quando não bate nada).
+ * o perfil público do afiliado com o produto originalmente compartilhado em
+ * destaque no topo, seguido de uma vitrine de recomendações genéricas
+ * ("Quem viu este produto também comprou") sem relação nenhuma com o que foi
+ * postado. O card do produto original é identificável de forma exata: seu
+ * link contém `c_id=/home/card-featured/element` — não precisa (e não deve)
+ * adivinhar por palavras em comum com o texto do post, o próprio ML já
+ * marca qual é o item certo.
  */
-export async function buscarProdutoEmPerfilSocial(
-  urlPerfil: string,
-  textoOriginal: string,
-): Promise<string | null> {
+export async function buscarProdutoEmPerfilSocial(urlPerfil: string): Promise<string | null> {
   const browser = await obterBrowser();
   const pagina = await abrirPaginaEmBackground(browser);
 
@@ -124,29 +113,13 @@ export async function buscarProdutoEmPerfilSocial(
     await pagina.goto(urlPerfil, { waitUntil: "domcontentloaded", timeout: 20000 });
     await pagina.waitForSelector(".poly-card", { timeout: 8000 }).catch(() => {});
 
-    const cards = pagina.locator(".poly-card");
-    const total = await cards.count();
-    if (total === 0) return null;
+    const href = await pagina
+      .locator('a[href*="c_id=/home/card-featured/element"]')
+      .first()
+      .getAttribute("href")
+      .catch(() => null);
 
-    const tokensTexto = tokenizar(textoOriginal);
-    let melhorUrl: string | null = null;
-    let melhorPontuacao = 0;
-
-    for (let i = 0; i < total; i++) {
-      const tituloEl = cards.nth(i).locator(".poly-component__title");
-      const titulo = (await tituloEl.textContent().catch(() => null))?.trim();
-      const href = await tituloEl.getAttribute("href").catch(() => null);
-      if (!titulo || !href) continue;
-
-      const pontuacao = tokenizar(titulo).filter((t) => tokensTexto.includes(t)).length;
-      if (pontuacao > melhorPontuacao) {
-        melhorPontuacao = pontuacao;
-        melhorUrl = href;
-      }
-    }
-
-    if (melhorPontuacao < 2) return null;
-    return limparUrlProduto(melhorUrl!);
+    return href ? limparUrlProduto(href) : null;
   } finally {
     await pagina.close();
   }
