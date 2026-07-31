@@ -27,8 +27,8 @@ const BANNER_CUPOM_SHOPEE = path.join(RAIZ_PROJETO, "src", "assets", "imgs", "sh
  * (bug real: cupom chegou 2min depois do último disparo pro canal, que
  * exige 5min de intervalo — nunca foi reenviado).
  */
-export async function processarMensagem(texto: string): Promise<void> {
-  const cupom = await cuponsRepo.inserirSeNovo(texto);
+export async function processarMensagem(texto: string, grupoOrigemId?: string): Promise<void> {
+  const cupom = await cuponsRepo.inserirSeNovo(texto, grupoOrigemId);
   if (!cupom) {
     logger.debug("mensagem de cupom duplicada, ignorada");
     return;
@@ -74,6 +74,14 @@ export async function dispararCupomPendente(canal: CanalRow): Promise<ResultadoC
     if (cuponsExtraidos.length === 0) continue; // formato não reconhecível, nunca vai ser repassável
 
     const { plataforma, urlShopee } = detectarPlataformaCupom(cupom.texto);
+
+    // Só Shopee e Mercado Livre têm geração de link de afiliado/despacho
+    // automático hoje — cupom de outro marketplace (AliExpress, Amazon,
+    // Magalu...) nunca deve ser despachado com o link fixo do ML por engano
+    // (bug real: cupom do AliExpress saiu rotulado e tratado como se fosse
+    // do ML). Fica só capturado (visível na aba Cupons do painel), sem
+    // repassar automaticamente — pula pro próximo candidato.
+    if (plataforma !== "shopee" && plataforma !== "mercado_livre") continue;
 
     let link: string;
     if (plataforma === "shopee" && urlShopee) {

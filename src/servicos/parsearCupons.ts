@@ -1,24 +1,46 @@
-export type PlataformaCupom = "shopee" | "mercado_livre";
+export type PlataformaCupom = "shopee" | "mercado_livre" | "aliexpress" | "amazon" | "magalu" | "desconhecida";
 
 const REGEX_URL_GENERICA = /(https?:\/\/[^\s]+)/g;
 
+// Domínio real de cada marketplace, na ordem em que são checados — usado só
+// pra IDENTIFICAR de qual site é o link (rotular certo, ver comentário
+// abaixo). Não significa que o sistema sabe gerar link de afiliado ou
+// despachar automaticamente pra todos eles (só Shopee e Mercado Livre têm
+// isso hoje, ver dispararCupomPendente em repassarCupons.ts).
+const DOMINIOS_PLATAFORMA: { plataforma: PlataformaCupom; padroes: string[] }[] = [
+  { plataforma: "shopee", padroes: ["shopee.com", "shope.ee"] },
+  { plataforma: "mercado_livre", padroes: ["mercadolivre.com", "mercadolibre.com", "meli.la"] },
+  { plataforma: "aliexpress", padroes: ["aliexpress.com"] },
+  { plataforma: "amazon", padroes: ["amazon.com", "amzn.to", "link.amazon"] },
+  { plataforma: "magalu", padroes: ["magazineluiza", "magazinevoce", "amzlink.to"] },
+];
+
 /**
- * Detecta se a mensagem de cupom veio de um post sobre a Shopee (link
- * shopee.com.br/shope.ee em algum lugar do texto) — o mesmo grupo monitorado
- * às vezes mistura cupom do ML e da Shopee, e antes disso o repasse sempre
- * rotulava tudo como "Mercado Livre" e usava o link fixo do ML, mesmo pra
- * cupom da Shopee de verdade. Sem link identificável, assume Mercado Livre
- * (comportamento histórico, formato mais comum nesses grupos).
+ * Detecta de qual marketplace veio o cupom pelo link no texto — o mesmo
+ * grupo monitorado às vezes mistura cupom de vários sites, e antes disso
+ * QUALQUER link que não fosse da Shopee virava "Mercado Livre" por padrão
+ * (bug real relatado pelo usuário: cupom do AliExpress rotulado e tratado
+ * como se fosse do ML). Link de site não reconhecido vira "desconhecida" —
+ * nunca é despachado automaticamente (ver dispararCupomPendente), só fica
+ * capturado e visível na aba Cupons, em vez de sair rotulado/tratado errado.
+ * Sem link nenhum no texto, mantém o comportamento histórico (assume
+ * Mercado Livre — formato mais comum nesses grupos quando não tem link).
  */
 export function detectarPlataformaCupom(texto: string): { plataforma: PlataformaCupom; urlShopee: string | null } {
   const urls = texto.match(REGEX_URL_GENERICA) ?? [];
-  const urlShopee = urls.find((u) => {
-    const baixa = u.toLowerCase();
-    return baixa.includes("shopee.com") || baixa.includes("shope.ee");
-  });
-  return urlShopee
-    ? { plataforma: "shopee", urlShopee: urlShopee.replace(/[.,;!?)\]]+$/, "") }
-    : { plataforma: "mercado_livre", urlShopee: null };
+
+  for (const { plataforma, padroes } of DOMINIOS_PLATAFORMA) {
+    const encontrada = urls.find((u) => padroes.some((p) => u.toLowerCase().includes(p)));
+    if (encontrada) {
+      return {
+        plataforma,
+        urlShopee: plataforma === "shopee" ? encontrada.replace(/[.,;!?)\]]+$/, "") : null,
+      };
+    }
+  }
+
+  if (urls.length > 0) return { plataforma: "desconhecida", urlShopee: null };
+  return { plataforma: "mercado_livre", urlShopee: null };
 }
 
 export interface CupomExtraido {
