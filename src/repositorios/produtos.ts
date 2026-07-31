@@ -38,6 +38,8 @@ export interface NovoProduto {
   grupoOrigemId?: string;
   /** Ver ProdutoRow.linkCupom. */
   linkCupom?: string;
+  /** Texto de chamada/impacto do post original de grupo monitorado (ver extrairChamada) — quando ausente, disparo pode gerar uma por IA (ver dispararProduto.ts). */
+  chamada?: string;
 }
 
 function paraProduto(row: any): ProdutoRow {
@@ -82,8 +84,8 @@ export async function inserirSeNovo(produto: NovoProduto): Promise<ProdutoRow | 
   const hash = calcularHash(produto);
 
   const { rows } = await pool.query(
-    `INSERT INTO produtos (fonte, url_original, titulo, preco_original, preco_promocional, imagem_url, cupom, nicho, preco_no_pix, url_afiliado, hash_conteudo, grupo_origem_id, link_cupom)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    `INSERT INTO produtos (fonte, url_original, titulo, preco_original, preco_promocional, imagem_url, cupom, nicho, preco_no_pix, url_afiliado, hash_conteudo, grupo_origem_id, link_cupom, chamada)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
      ON CONFLICT (hash_conteudo) DO NOTHING
      RETURNING *`,
     [
@@ -100,6 +102,7 @@ export async function inserirSeNovo(produto: NovoProduto): Promise<ProdutoRow | 
       hash,
       produto.grupoOrigemId ?? null,
       produto.linkCupom ?? null,
+      produto.chamada ?? null,
     ],
   );
 

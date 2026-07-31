@@ -4,7 +4,7 @@ import {
   buscarDadosProduto,
   buscarProdutoEmPerfilSocial,
 } from "../integracoes/mercadoLivre/produtoScraper.js";
-import { extrairPrecos } from "./parsearProdutoCard.js";
+import { extrairPrecos, chamadaSemRepetirTitulo } from "./parsearProdutoCard.js";
 import { logger } from "../config/logger.js";
 
 export type OrigemGrupoMonitorado = "telegram" | "whatsapp";
@@ -26,6 +26,7 @@ export type OrigemGrupoMonitorado = "telegram" | "whatsapp";
 export async function processarProdutoDetectado(
   urlBruta: string,
   cupom: string | null,
+  chamada: string | null,
   origem: OrigemGrupoMonitorado,
   nicho: string,
   textoOriginal: string,
@@ -38,10 +39,9 @@ export async function processarProdutoDetectado(
 
     if (!dados) {
       // Link de afiliado (meli.la) do "Gerador de produtos recomendados" não
-      // aponta pro produto — resolve pro perfil social de quem postou, com
-      // várias recomendações. Tenta achar o card certo por palavras em comum
-      // com o texto original, e aí sim busca os dados na página do produto.
-      const urlAchada = await buscarProdutoEmPerfilSocial(urlResolvida, textoOriginal);
+      // aponta pro produto — resolve pro perfil social de quem postou, com o
+      // produto original em destaque (ver buscarProdutoEmPerfilSocial).
+      const urlAchada = await buscarProdutoEmPerfilSocial(urlResolvida);
       if (urlAchada) {
         dados = await buscarDadosProduto(urlAchada);
         if (dados) urlFinalProduto = urlAchada;
@@ -76,6 +76,7 @@ export async function processarProdutoDetectado(
       nicho,
       precoNoPix: precosDoPost?.noPix ?? false,
       grupoOrigemId: grupoId,
+      chamada: chamadaSemRepetirTitulo(chamada, dados.titulo) ?? undefined,
     });
 
     if (resultado) {

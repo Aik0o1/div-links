@@ -29,13 +29,21 @@ export async function processarMensagemGrupo(
   grupoId?: string,
 ): Promise<void> {
   if (extrairCupons(texto).length > 0) {
-    await processarComoCupons(texto);
+    await processarComoCupons(texto, grupoId);
     return;
   }
 
   const produtoDetectado = extrairProdutoCard(texto);
   if (produtoDetectado) {
-    await processarProdutoDetectado(produtoDetectado.urlBruta, produtoDetectado.cupom, origem, nicho, texto, grupoId);
+    await processarProdutoDetectado(
+      produtoDetectado.urlBruta,
+      produtoDetectado.cupom,
+      produtoDetectado.chamada,
+      origem,
+      nicho,
+      texto,
+      grupoId,
+    );
     return;
   }
 

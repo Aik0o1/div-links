@@ -63,6 +63,7 @@ export async function processarProdutoDetectadoShopee(
       precoNoPix: produto.precos?.noPix ?? false,
       grupoOrigemId: grupoId,
       linkCupom: produto.linkCupom ?? undefined,
+      chamada: produto.chamada ?? undefined,
     });
 
     if (resultado) {
