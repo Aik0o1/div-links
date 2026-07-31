@@ -156,20 +156,12 @@ export async function canaisElegiveis(produtoId: number): Promise<CanalComElegib
       continue;
     }
 
-    const ultimoEnvio = await disparosRepo.ultimoEnvioGeralPorCanal(canal.id);
-    if (ultimoEnvio) {
-      const minutosDesde = (Date.now() - new Date(ultimoEnvio).getTime()) / 60000;
-      if (minutosDesde < canal.intervaloMinimoMinutos) {
-        const faltam = Math.ceil(canal.intervaloMinimoMinutos - minutosDesde);
-        resultado.push({
-          ...canal,
-          elegivel: false,
-          motivo: `intervalo mínimo entre disparos não passou (faltam ${faltam} min)`,
-        });
-        continue;
-      }
-    }
-
+    // Intervalo mínimo entre disparos NÃO é checado aqui de propósito — essa
+    // função só afeta a lista de canais elegíveis pra ENVIO MANUAL (aba
+    // Produtos), e o usuário quer poder mandar um produto na hora, sem
+    // esperar o intervalo, sabendo do risco. O disparo AUTOMÁTICO continua
+    // respeitando o intervalo normalmente (checagem própria, ver
+    // agendadorDisparo.ts -> processarCanal), essa mudança não afeta ele.
     resultado.push({ ...canal, elegivel: true });
   }
 
