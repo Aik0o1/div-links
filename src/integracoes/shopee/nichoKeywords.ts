@@ -23,4 +23,6 @@ export const NICHO_SHOPEE_KEYWORDS: Record<string, string[]> = {
   gamer: ["mouse gamer", "cadeira gamer", "teclado gamer", "headset gamer"],
   moda: ["tenis feminino", "camiseta masculina", "bolsa feminina", "roupa infantil"],
   tecnologia: ["fone de ouvido bluetooth", "capinha de celular", "carregador turbo", "smartwatch"],
+  maternidade: ["roupa de bebe", "enxoval de bebe", "fralda descartavel", "kit maternidade"],
+  pet: ["racao para cachorro", "brinquedo para gato", "coleira para cachorro", "casinha de cachorro", "areia higienica para gato"],
 };
