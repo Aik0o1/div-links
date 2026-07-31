@@ -8,21 +8,15 @@ import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 import { statusInstancia } from "../../integracoes/evolutionApi/instancia.js";
 import { statusListener } from "../../integracoes/telegramListener/cliente.js";
-import { chromeConectado, chromeShopeeConectado } from "../../servicos/statusSistema.js";
+import { chromeConectado } from "../../servicos/statusSistema.js";
 
 export const rotaStatus = Router();
 
 const RAIZ_PROJETO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const PERFIL_CHROME_ML = path.join(RAIZ_PROJETO, ".playwright-ml-session");
-// Perfil e porta de debug SEPARADOS do Chrome do ML — de propósito. O Chrome
-// do ML (mesma janela/perfil/porta 9222) não conseguiu abrir o site da
-// Shopee (parece bloquear/detectar automação vinda daquele perfil). Duas
-// janelas de Chrome independentes, cada uma com seu próprio perfil logado.
-const PERFIL_CHROME_SHOPEE = path.join(RAIZ_PROJETO, ".playwright-shopee-session");
-const CDP_PORTA_SHOPEE = 9223;
 
 rotaStatus.get("/", async (_req, res) => {
-  const [db, redis, chrome, chromeShopee, whatsapp, telegramListener] = await Promise.all([
+  const [db, redis, chrome, whatsapp, telegramListener] = await Promise.all([
     pool
       .query("SELECT 1")
       .then(() => true)
@@ -32,7 +26,6 @@ rotaStatus.get("/", async (_req, res) => {
       .then(() => true)
       .catch(() => false),
     chromeConectado(),
-    chromeShopeeConectado(),
     statusInstancia().catch(() => ({ existe: false, conectado: false, estado: null })),
     statusListener().catch(() => ({ autenticado: false, grupoMonitorado: null })),
   ]);
@@ -42,7 +35,6 @@ rotaStatus.get("/", async (_req, res) => {
     redis,
     telegram: { configurado: !!env.telegram.botToken },
     chrome: { conectado: chrome },
-    chromeShopee: { conectado: chromeShopee },
     whatsapp,
     telegramListener,
   });
@@ -64,31 +56,6 @@ rotaStatus.post("/abrir-chrome", (_req, res) => {
     );
     processo.on("error", (err) => {
       logger.error({ err }, "falha ao abrir o Chrome pelo painel");
-    });
-    processo.unref();
-    res.json({ ok: true });
-  } catch (err: any) {
-    res.status(500).json({ erro: err.message });
-  }
-});
-
-// Janela separada só pra Shopee (perfil e porta de debug próprios — ver
-// PERFIL_CHROME_SHOPEE acima). Primeira vez: precisa logar manualmente na
-// conta de afiliado da Shopee nessa janela, igual foi feito com o Chrome do
-// ML.
-rotaStatus.post("/abrir-chrome-shopee", (_req, res) => {
-  try {
-    const processo = spawn(
-      "google-chrome",
-      [
-        `--remote-debugging-port=${CDP_PORTA_SHOPEE}`,
-        `--user-data-dir=${PERFIL_CHROME_SHOPEE}`,
-        "https://affiliate.shopee.com.br/offer/custom_link",
-      ],
-      { detached: true, stdio: "ignore" },
-    );
-    processo.on("error", (err) => {
-      logger.error({ err }, "falha ao abrir o Chrome da Shopee pelo painel");
     });
     processo.unref();
     res.json({ ok: true });
