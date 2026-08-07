@@ -109,6 +109,17 @@ export function ehMencaoSolta(linha: string): boolean {
   return /^@\S+$/.test(linha);
 }
 
+// Grupo "Lobão das Promoções" assina as chamadas com variações do próprio
+// mascote/marca ("lobo", "loba", "lobos", "lobas", "lobinho", "lobinha",
+// "lobão"...) — é auto-referência do grupo, não impacto sobre o produto.
+// Pedido explícito do usuário: essas linhas não devem virar chamada.
+const REGEX_MARCA_LOBO = /\blob(?:o|a|ão|ões|os|as|inhos?|inhas?)\b/i;
+
+/** Linha que menciona o mascote/marca "lobo" (grupo Lobão das Promoções) — auto-referência do grupo, nunca vira chamada. */
+export function mencionaMarcaLobo(linha: string): boolean {
+  return REGEX_MARCA_LOBO.test(linha);
+}
+
 /**
  * Pega o(s) texto(s) de "chamada" de impacto do começo do post (ex.: "🌟O
  * BRINQUEDO QUE DEIXOU MEUS 12 GATOS MAAAALUCOSSS!" + "Impossivel seu gato
@@ -123,6 +134,10 @@ export function ehMencaoSolta(linha: string): boolean {
  * "@usuário". Sem achar nenhuma linha (post começa direto com o cupom, ou a
  * primeira linha já falha algum desses critérios), não tem chamada — não é
  * erro, é normal.
+ *
+ * Linha que menciona a marca "lobo" (ver REGEX_MARCA_LOBO) é só PULADA, não
+ * interrompe a busca — é auto-referência do grupo em meio ao resto da
+ * chamada de verdade, as linhas ao redor continuam válidas.
  */
 export function extrairChamada(texto: string): string | null {
   const linhas = texto.split("\n").map((l) => l.trim());
@@ -130,6 +145,7 @@ export function extrairChamada(texto: string): string | null {
 
   for (const linha of linhas) {
     if (!linha || mencionaCupom(linha) || ehMencaoSolta(linha)) break;
+    if (mencionaMarcaLobo(linha)) continue;
     chamada.push(linha);
   }
 
@@ -140,21 +156,42 @@ function semSimbolosDasPontas(texto: string): string {
   return texto.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "").trim();
 }
 
+function tokenizarSemAcento(texto: string): string[] {
+  return (
+    texto
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "") // remove acentos (marcas de combinação após normalize NFD)
+      .match(/[a-z0-9]{3,}/g) ?? []
+  );
+}
+
 /**
- * Quando o post simplesmente copia o próprio título do produto (às vezes
- * seguido de uma tag automática tipo "Vendido no Mercado Livre") como se
- * fosse a "chamada", isso NÃO é uma frase de impacto de verdade — é só o
- * título duplicado. Bug real: legenda mostrando o título 2x (uma vez como
- * "chamada", outra como o `*título*` de sempre). Compara a primeira linha da
- * chamada com o título de verdade (sem símbolos/emoji das pontas, sem
- * diferenciar maiúsculas) — se bater, descarta a chamada inteira (não só
- * aquela linha), já que o resto que sobrar tende a ser só uma tag genérica
- * tipo a do Mercado Livre acima, não uma chamada de verdade sozinha.
+ * Quando o post simplesmente copia (às vezes abreviando/reescrevendo um
+ * pouco — bug real: "Cadeira Ergonômica Mônaco..." na chamada x "Cadeira DE
+ * ESCRITÓRIO Ergonômica Mônaco..." no título de verdade, não bate igual) o
+ * próprio título do produto como se fosse a "chamada" (às vezes seguido de
+ * uma tag automática tipo "Vendido no Mercado Livre"), isso NÃO é uma frase
+ * de impacto de verdade — é só o título duplicado. Bug real: legenda
+ * mostrando o título 2x (uma vez como "chamada", outra como o `*título*` de
+ * sempre). Em vez de exigir a primeira linha da chamada IDÊNTICA ao título,
+ * compara por sobreposição de palavras (>=70% das palavras da primeira
+ * linha também aparecem no título) — se bater, descarta a chamada inteira
+ * (não só aquela linha), já que o resto que sobrar tende a ser só uma tag
+ * genérica tipo a do Mercado Livre acima, não uma chamada de verdade sozinha.
  */
 export function chamadaSemRepetirTitulo(chamada: string | null, titulo: string | null): string | null {
   if (!chamada || !titulo) return chamada;
-  const primeiraLinha = semSimbolosDasPontas(chamada.split("\n")[0]).toLowerCase();
-  return primeiraLinha === semSimbolosDasPontas(titulo).toLowerCase() ? null : chamada;
+
+  const primeiraLinha = chamada.split("\n")[0];
+  if (semSimbolosDasPontas(primeiraLinha).toLowerCase() === semSimbolosDasPontas(titulo).toLowerCase()) return null;
+
+  const tokensLinha = tokenizarSemAcento(primeiraLinha);
+  if (tokensLinha.length === 0) return chamada;
+  const tokensTitulo = new Set(tokenizarSemAcento(titulo));
+  const emComum = tokensLinha.filter((t) => tokensTitulo.has(t)).length;
+
+  return emComum / tokensLinha.length >= 0.7 ? null : chamada;
 }
 
 /**

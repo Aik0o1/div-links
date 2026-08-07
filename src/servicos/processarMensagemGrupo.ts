@@ -6,6 +6,15 @@ import { processarProdutoDetectado, type OrigemGrupoMonitorado } from "./captura
 import { processarProdutoDetectadoShopee } from "./capturarProdutoShopee.js";
 import { logger } from "../config/logger.js";
 
+// Grupos cuja "chamada" (frase de impacto do início do post, ver
+// extrairChamada em parsearProdutoCard.ts) o usuário pediu explicitamente
+// pra NÃO usar — decisão por grupo, não por conteúdo (diferente do filtro de
+// marca "lobo", que vale pra qualquer grupo). O produto continua sendo
+// capturado normalmente, só sem a chamada.
+const GRUPOS_SEM_CHAMADA = new Set<string>([
+  "120363410529460005@g.us", // Ofertas de Casa 🏡 | Gii #32 (WhatsApp)
+]);
+
 /**
  * Ponto de entrada único pra qualquer mensagem nova vinda de um grupo
  * monitorado (Telegram ou WhatsApp — pode ser um grupo de lista de cupons
@@ -33,12 +42,14 @@ export async function processarMensagemGrupo(
     return;
   }
 
+  const semChamada = grupoId !== undefined && GRUPOS_SEM_CHAMADA.has(grupoId);
+
   const produtoDetectado = extrairProdutoCard(texto);
   if (produtoDetectado) {
     await processarProdutoDetectado(
       produtoDetectado.urlBruta,
       produtoDetectado.cupom,
-      produtoDetectado.chamada,
+      semChamada ? null : produtoDetectado.chamada,
       origem,
       nicho,
       texto,
@@ -49,7 +60,11 @@ export async function processarMensagemGrupo(
 
   const produtoShopee = extrairProdutoCardShopee(texto);
   if (produtoShopee) {
-    await processarProdutoDetectadoShopee(produtoShopee, origem, grupoId);
+    await processarProdutoDetectadoShopee(
+      semChamada ? { ...produtoShopee, chamada: null } : produtoShopee,
+      origem,
+      grupoId,
+    );
     return;
   }
 
