@@ -189,7 +189,7 @@ export function CanalDialog({ aberto, onFechar, canal, nichos, onSalvo }: Props)
               )}
             </div>
 
-            <div className="flex flex-col gap-1.5">
+            <div className="col-span-2 flex flex-col gap-1.5">
               <Label htmlFor="canal-identificador">Identificador</Label>
               <Input
                 id="canal-identificador"
@@ -197,6 +197,25 @@ export function CanalDialog({ aberto, onFechar, canal, nichos, onSalvo }: Props)
                 value={form.identificadorGrupo}
                 onChange={(e) => setForm((f) => ({ ...f, identificadorGrupo: e.target.value }))}
               />
+              {form.tipo === "telegram" ? (
+                <p className="text-xs text-muted-foreground">
+                  Como pegar: adicione seu bot no grupo → mande qualquer mensagem nele → abra{" "}
+                  <code className="rounded bg-muted px-1">
+                    https://api.telegram.org/bot&lt;SEU_TOKEN&gt;/getUpdates
+                  </code>{" "}
+                  no navegador (troque pelo token do <code className="rounded bg-muted px-1">TELEGRAM_BOT_TOKEN</code>{" "}
+                  do seu <code className="rounded bg-muted px-1">.env</code>) → procure{" "}
+                  <code className="rounded bg-muted px-1">"chat":{"{"}"id": -100...{"}"}</code> na resposta — esse
+                  número é o identificador.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Como pegar: adicione o número do WhatsApp conectado no grupo → abra{" "}
+                  <code className="rounded bg-muted px-1">/api/whatsapp/grupos</code> no navegador → ache o grupo
+                  pelo nome na lista e copie o valor de <code className="rounded bg-muted px-1">jid</code> (termina
+                  em <code className="rounded bg-muted px-1">@g.us</code>).
+                </p>
+              )}
             </div>
 
             <div className="flex flex-col gap-1.5">
