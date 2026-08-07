@@ -79,6 +79,15 @@ function calcularHash(produto: NovoProduto): string {
   return createHash("sha1").update(base).digest("hex");
 }
 
+// `NaN` nunca é um preço válido pra gravar — vira "R$ NaN" na legenda
+// enviada (bug real reportado pelo usuário). Alguma extração de preço com
+// bug (já corrigido, ou uma futura ainda não vista) pode produzir NaN em vez
+// de null/undefined; trata como "sem preço" (null) em vez de deixar passar
+// pro banco, que aceita NaN de boa num campo numeric.
+function precoValido(valor: number | undefined): number | null {
+  return valor !== undefined && !Number.isNaN(valor) ? valor : null;
+}
+
 /** Retorna null se o produto já existir (deduplicado por hash_conteudo). */
 export async function inserirSeNovo(produto: NovoProduto): Promise<ProdutoRow | null> {
   const hash = calcularHash(produto);
@@ -92,8 +101,8 @@ export async function inserirSeNovo(produto: NovoProduto): Promise<ProdutoRow | 
       produto.fonte,
       produto.urlOriginal,
       produto.titulo,
-      produto.precoOriginal ?? null,
-      produto.precoPromocional ?? null,
+      precoValido(produto.precoOriginal),
+      precoValido(produto.precoPromocional),
       produto.imagemUrl ?? null,
       produto.cupom ?? null,
       produto.nicho,
