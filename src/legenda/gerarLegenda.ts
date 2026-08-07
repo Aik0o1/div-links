@@ -14,29 +14,48 @@ function limparLinhaCupom(linha: string): string {
     .trim();
 }
 
+// Remove QUALQUER "*"/"_" que sobrar no MEIO do texto (não só nas pontas,
+// ver limparLinhaCupom acima) — texto vindo de post de terceiro pode ter seu
+// próprio *negrito*/_itálico_ interno, embutido no meio da frase (ex.:
+// "*E TEM CUPOM...!* _detalhe aqui_"). Quando a gente embrulha esse texto de
+// novo no NOSSO próprio "*...*", os asteriscos do meio ficam soltos/
+// desbalanceados — bug real: Telegram (bem mais rígido que WhatsApp com
+// entidade Markdown) recusa a mensagem inteira com "can't find end of the
+// entity". Mais seguro tirar todo "*"/"_" de texto de terceiro do que tentar
+// preservar negrito aninhado sem quebrar o balanceamento.
+function semMarkdown(texto: string): string {
+  return texto.replace(/[*_]/g, "");
+}
+
+// NaN tecnicamente é um "number" pro TypeScript, então o tipo de
+// ParametrosLegenda não pega isso — sem essa checagem, um NaN vazando de
+// algum bug de extração de preço (já visto um caso real) vira "R$ NaN" na
+// legenda enviada de verdade pro cliente. Trata como "sem esse preço" em vez
+// de deixar passar.
+function precoValido(valor: number | undefined): number | undefined {
+  return valor !== undefined && !Number.isNaN(valor) ? valor : undefined;
+}
+
 // *negrito* funciona tanto no WhatsApp quanto no Telegram (modo Markdown legado).
 export function gerarLegenda(p: ParametrosLegenda): string {
   const linhas: string[] = [];
+  const precoOriginal = precoValido(p.precoOriginal);
+  const precoPromocional = precoValido(p.precoPromocional);
 
   if (p.chamada) {
-    linhas.push(p.chamada, "");
+    linhas.push(semMarkdown(p.chamada), "");
   }
 
-  linhas.push(`*${p.titulo}*`, "");
+  linhas.push(`*${semMarkdown(p.titulo)}*`, "");
 
-  const temDesconto =
-    p.precoOriginal !== undefined &&
-    p.precoPromocional !== undefined &&
-    p.precoOriginal > p.precoPromocional;
+  const temDesconto = precoOriginal !== undefined && precoPromocional !== undefined && precoOriginal > precoPromocional;
 
   const sufixoPix = p.precoNoPix ? " no Pix 💠" : "";
 
   if (temDesconto) {
-    linhas.push(
-      `De: ${formatarPreco(p.precoOriginal!)} | Por: ${formatarPreco(p.precoPromocional!)}${sufixoPix} 🔥`,
-    );
+    linhas.push(`De: ${formatarPreco(precoOriginal!)} | Por: ${formatarPreco(precoPromocional!)}${sufixoPix} 🔥`);
   } else {
-    const preco = p.precoPromocional ?? p.precoOriginal;
+    const preco = precoPromocional ?? precoOriginal;
     if (preco !== undefined) linhas.push(`Por: ${formatarPreco(preco)}${sufixoPix}`);
   }
 
@@ -45,7 +64,7 @@ export function gerarLegenda(p: ParametrosLegenda): string {
   // conteúdo sem reformatar (o formato varia demais entre grupos pra tentar
   // estruturar só um código), mas sempre em negrito com ⚠️, pra destacar.
   if (p.cupom) {
-    linhas.push(`⚠️ *${limparLinhaCupom(p.cupom)}*`);
+    linhas.push(`⚠️ *${semMarkdown(limparLinhaCupom(p.cupom))}*`);
     // Link de ATIVAR o cupom no anúncio, distinto do link de afiliado do
     // produto (ver ProdutoRow.linkCupom) — sem ele, a legenda menciona
     // "resgate o cupom" mas não dá pro cliente clicar em lugar nenhum pra
