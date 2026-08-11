@@ -4,6 +4,7 @@ import * as produtosRepo from "../../repositorios/produtos.js";
 import type { ProdutoRow } from "../../repositorios/produtos.js";
 import { capturarProdutosPorNicho } from "../../servicos/capturarProdutos.js";
 import { capturarProdutosShopeePorNicho } from "../../servicos/capturarProdutosShopee.js";
+import { capturarProdutoManual } from "../../servicos/capturarProdutoManual.js";
 import { canaisElegiveis, dispararParaCanal } from "../../servicos/dispararProduto.js";
 import { gerarChamada } from "../../integracoes/ollama/gerarChamada.js";
 import { logger } from "../../config/logger.js";
@@ -73,6 +74,37 @@ rotaProdutos.post("/capturar-shopee", async (req, res) => {
     res.json(resultado);
   } catch (err) {
     logger.error({ err, nicho }, "falha ao capturar ofertas Shopee");
+    res.status(500).json({ erro: (err as Error).message });
+  }
+});
+
+// Captura avulsa de um produto específico por link (aba Produtos — "achei
+// uma oferta, adiciona na fila"). Ver capturarProdutoManual.ts.
+rotaProdutos.post("/capturar-manual", async (req, res) => {
+  const { url, cupom, precoPromocional, precoNoPix, nicho } = req.body;
+  if (typeof url !== "string" || !url) {
+    res.status(400).json({ erro: "url é obrigatória" });
+    return;
+  }
+  if (typeof nicho !== "string" || !nicho) {
+    res.status(400).json({ erro: "nicho é obrigatório" });
+    return;
+  }
+  try {
+    const resultado = await capturarProdutoManual({
+      url,
+      cupom: typeof cupom === "string" && cupom ? cupom : undefined,
+      precoPromocional: typeof precoPromocional === "number" ? precoPromocional : undefined,
+      precoNoPix: typeof precoNoPix === "boolean" ? precoNoPix : undefined,
+      nicho,
+    });
+    if (!resultado) {
+      res.status(409).json({ erro: "produto já capturado antes (mesmo título/url/nicho)" });
+      return;
+    }
+    res.json(resultado);
+  } catch (err) {
+    logger.error({ err, url }, "falha ao capturar produto manualmente");
     res.status(500).json({ erro: (err as Error).message });
   }
 });

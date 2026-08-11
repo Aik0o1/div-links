@@ -61,8 +61,24 @@ export async function buscarDadosProduto(url: string): Promise<DadosProdutoML | 
       .first()
       .getAttribute("aria-label")
       .catch(() => null);
+    // O seletor antigo (`.ui-pdp-gallery__figure img`) parou de bater com
+    // NADA — o ML trocou a estrutura da galeria. Confirmado em produção
+    // (2026-08-07, via diagnóstico temporário) que a imagem principal hoje é
+    // o próprio `<img>` com uma classe `ui-pdp-gallery--<orientação>`
+    // (`--horizontal` ou `--vertical`, dependendo do layout/template do
+    // anúncio — não tem como prever qual de antemão), não mais dentro de
+    // `<figure>`. Isso derrubava pra 0% a captura de imagem de TODO produto
+    // de grupo monitorado (Telegram e WhatsApp), que sempre passa por aqui —
+    // produto sem imagem nunca é reenviado (ver dispararProduto.ts), então
+    // cada um virava perda permanente. `[class*="ui-pdp-gallery--"]` casa com
+    // qualquer orientação (atual ou futura) direto na própria tag `<img>`,
+    // sem depender de qual container pai o ML decidir usar. Mantém os
+    // seletores antigos por último, por segurança, caso o ML volte a usar
+    // esses layouts em algum template.
     const imagemEl = pagina
-      .locator(".ui-pdp-gallery__figure img, figure.ui-pdp-gallery__figure img")
+      .locator(
+        'img[class*="ui-pdp-gallery--"], .ui-pdp-gallery__clip img, .ui-pdp-gallery__figure img, figure.ui-pdp-gallery__figure img',
+      )
       .first();
     const imagemUrl =
       (await imagemEl.getAttribute("src").catch(() => null)) ??
@@ -85,10 +101,23 @@ export async function buscarDadosProduto(url: string): Promise<DadosProdutoML | 
   }
 }
 
+/**
+ * Descarta os parâmetros de rastreamento da URL do card (matt_*, ref, wid,
+ * sid, reco_*, tracking_id, c_id, c_uid — só servem pra métrica interna do
+ * ML), mas **preserva `pdp_filters`**. Diferente dos outros, esse não é
+ * rastreamento: numa página de catálogo (`/p/MLB...`) com vários vendedores
+ * pro mesmo produto, ele que seleciona QUAL vendedor/anúncio mostrar —
+ * inclusive qual preço aparece. Bug real (2026-08-11): descartava ele junto
+ * com o resto, então a raspagem caía sempre no vendedor padrão da página
+ * genérica em vez do que estava de fato em destaque no card — preço saía
+ * errado (de um vendedor diferente do anunciado).
+ */
 function limparUrlProduto(url: string): string {
   try {
     const u = new URL(url, "https://www.mercadolivre.com.br");
-    return `${u.origin}${u.pathname}`;
+    const pdpFilters = u.searchParams.get("pdp_filters");
+    const query = pdpFilters ? `?pdp_filters=${encodeURIComponent(pdpFilters)}` : "";
+    return `${u.origin}${u.pathname}${query}`;
   } catch {
     return url;
   }

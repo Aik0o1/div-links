@@ -56,14 +56,24 @@ export async function processarProdutoDetectado(
       return;
     }
 
-    // Preço: usa o valor anunciado no próprio post do grupo monitorado
-    // quando disponível (pedido do usuário — evita divergir do que a
-    // audiência já viu), com o preço raspado da página real como fallback
-    // pros casos em que o post não menciona valor. Título e imagem sempre
-    // vêm da página real (ver comentário em extrairProdutoCard).
+    // Preço promocional ("Por:"): usa o valor anunciado no próprio post do
+    // grupo monitorado quando disponível (pedido do usuário — evita divergir
+    // do que a audiência já viu, e cobre desconto de Pix/cupom que a página
+    // do ML sozinha não mostra), com o preço raspado da página real como
+    // fallback pros casos em que o post não menciona valor.
+    //
+    // Preço original ("De:") SEMPRE vem da página real do ML, nunca do post
+    // — decisão trocada em 2026-08-10 depois de um caso real: post anunciava
+    // "De: R$ 600,00" pra um produto que nunca custou isso, inflando o
+    // desconto aparente. Diferente do promocional, não tem motivo legítimo
+    // pro "De:" divergir do preço de referência real — é justamente o número
+    // que grupo de baixa qualidade tem incentivo a inflar. Cai no preço do
+    // post só se a página real não tiver um (fallback, não o caminho
+    // principal). Título e imagem seguem sempre da página real (ver
+    // comentário em extrairProdutoCard).
     const precosDoPost = extrairPrecos(textoOriginal);
     const precoPromocional = precosDoPost ? precosDoPost.precoPromocional : dados.precoPromocional;
-    const precoOriginal = precosDoPost?.precoOriginal ?? dados.precoOriginal;
+    const precoOriginal = dados.precoOriginal ?? precosDoPost?.precoOriginal ?? undefined;
 
     const resultado = await produtosRepo.inserirSeNovo({
       fonte: origem === "telegram" ? "telegram_terceiros" : "whatsapp_terceiros",

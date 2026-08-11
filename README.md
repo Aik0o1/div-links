@@ -41,13 +41,15 @@ npm run ui               # sobe o painel em http://localhost:3400 (ou o valor de
 Depois, ainda é preciso (uma vez cada, feito pelo painel ou terminal):
 
 1. **Autorizar o Mercado Livre**: `npm run meli:autorizar` (abre uma URL, autoriza, cola o `?code=...` de volta no terminal).
-2. **Abrir e logar o Chrome do link builder** (janela real, fica aberta em segundo plano — usada pra gerar links de afiliado e fazer scraping):
+2. **Abrir e logar o Chrome do link builder** (janela real, usada pra gerar links de afiliado e fazer scraping — cada captura abre sua própria aba em segundo plano *dentro* dessa janela, sem tirar o foco de você, mas **a janela em si não pode ficar minimizada**: o Chrome para de renderizar frames de janela minimizada/oculta, e a automação trava esperando um clique "estabilizar" que nunca chega):
    ```bash
    google-chrome --remote-debugging-port=9222 \
+     --disable-backgrounding-occluded-windows \
+     --disable-renderer-backgrounding \
      --user-data-dir="<caminho-do-projeto>/.playwright-ml-session" \
      "https://www.mercadolivre.com.br/afiliados/linkbuilder#hub"
    ```
-   Ou pelo próprio painel (aba Status → "Abrir Chrome"). Logue com sua conta do Mercado Livre e deixe a janela aberta.
+   Ou pelo próprio painel (aba Status → "Abrir Chrome"). Logue com sua conta do Mercado Livre e deixe a janela aberta e **não minimizada** (pode ficar atrás de outras, num monitor secundário, etc. — só não minimizada).
 3. **Conectar o WhatsApp** (aba Status → "Conectar" → escanear o QR).
 4. **Conectar o monitor de Telegram**, se for usar (aba Status → card do monitor → telefone → código → senha se tiver 2FA).
 

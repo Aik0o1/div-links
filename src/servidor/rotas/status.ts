@@ -43,6 +43,16 @@ rotaStatus.get("/", async (_req, res) => {
 // Abre a janela real do Chrome com debug remoto ligado, no profile usado pelo
 // link builder do ML. É um processo solto (detached) — sobrevive mesmo se o
 // painel reiniciar, exatamente como o fluxo manual via terminal.
+//
+// As duas flags `--disable-*backgrounding*` são essenciais: sem elas, o
+// Chrome para de produzir frames de tela pra essa janela assim que ela é
+// minimizada ou fica atrás de outra (comum no Wayland, que só compõe janela
+// visível). O JS da página continua rodando normal (por isso o `Target
+// createTarget` e o `evaluate` nunca davam erro), mas o Playwright espera o
+// elemento ficar "stable" comparando frames renderizados consecutivos —
+// sem frame novo sendo produzido, essa espera nunca termina. Sintoma
+// confirmado em produção (2026-08-10): clique no botão "Gerar" do link
+// builder travando 30s com timeout, janela minimizada.
 rotaStatus.post("/abrir-chrome", (_req, res) => {
   try {
     const processo = spawn(
@@ -50,6 +60,8 @@ rotaStatus.post("/abrir-chrome", (_req, res) => {
       [
         "--remote-debugging-port=9222",
         `--user-data-dir=${PERFIL_CHROME_ML}`,
+        "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding",
         "https://www.mercadolivre.com.br/afiliados/linkbuilder#hub",
       ],
       { detached: true, stdio: "ignore" },
