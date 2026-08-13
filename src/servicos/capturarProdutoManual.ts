@@ -3,7 +3,7 @@ import {
   resolverUrlFinal,
   buscarDadosProduto,
   buscarProdutoEmPerfilSocial,
-} from "../integracoes/mercadoLivre/produtoScraper.js";
+} from "../integracoes/mercadoLivre/produtoScraperHttp.js";
 import { logger } from "../config/logger.js";
 import type { ProdutoRow } from "../repositorios/produtos.js";
 

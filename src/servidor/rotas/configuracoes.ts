@@ -30,6 +30,36 @@ rotaConfiguracoes.put("/shopee", async (req, res) => {
   res.json({ appId: appId.trim(), configurado: true });
 });
 
+// Cookie nunca volta em texto puro pro frontend depois de salvo — só o
+// booleano "configurado" (mesmo motivo do secret da Shopee, mas ainda mais
+// sensível aqui: é uma sessão logada de verdade).
+rotaConfiguracoes.get("/mercado-livre", async (_req, res) => {
+  const [config, cookie] = await Promise.all([
+    configuracoesRepo.obterMeliAfiliadoConfig(),
+    configuracoesRepo.obterMeliSessionCookie(),
+  ]);
+  res.json({
+    tag: config?.tag ?? "",
+    cookieConfigurado: !!cookie,
+  });
+});
+
+rotaConfiguracoes.put("/mercado-livre", async (req, res) => {
+  const { tag, cookie } = req.body;
+  if (typeof tag !== "string" || !tag.trim()) {
+    res.status(400).json({ erro: "tag é obrigatória" });
+    return;
+  }
+  await configuracoesRepo.definirMeliAfiliadoConfig({ tag: tag.trim() });
+  // Cookie vazio no PUT mantém o valor já salvo (permite editar só a tag,
+  // ou salvar a tag antes de ter um cookie ainda).
+  if (typeof cookie === "string" && cookie.trim()) {
+    await configuracoesRepo.definirMeliSessionCookie(cookie.trim());
+  }
+  const cookieAtual = await configuracoesRepo.obterMeliSessionCookie();
+  res.json({ tag: tag.trim(), cookieConfigurado: !!cookieAtual });
+});
+
 rotaConfiguracoes.get("/", async (_req, res) => {
   res.json({
     descontoMinimo: await configuracoesRepo.obterDescontoMinimo(),

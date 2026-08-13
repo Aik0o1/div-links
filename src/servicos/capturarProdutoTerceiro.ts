@@ -3,7 +3,7 @@ import {
   resolverUrlFinal,
   buscarDadosProduto,
   buscarProdutoEmPerfilSocial,
-} from "../integracoes/mercadoLivre/produtoScraper.js";
+} from "../integracoes/mercadoLivre/produtoScraperHttp.js";
 import { extrairPrecos, chamadaSemRepetirTitulo } from "./parsearProdutoCard.js";
 import { logger } from "../config/logger.js";
 

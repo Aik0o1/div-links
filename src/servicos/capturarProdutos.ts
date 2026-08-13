@@ -1,4 +1,4 @@
-import { buscarOfertasMercadoLivre } from "../integracoes/mercadoLivre/ofertasScraper.js";
+import { buscarOfertasMercadoLivre } from "../integracoes/mercadoLivre/ofertasScraperHttp.js";
 import * as nichosRepo from "../repositorios/nichos.js";
 import * as configuracoesRepo from "../repositorios/configuracoes.js";
 import * as produtosRepo from "../repositorios/produtos.js";

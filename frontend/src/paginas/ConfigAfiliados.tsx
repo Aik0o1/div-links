@@ -1,15 +1,18 @@
 import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
-import { ExternalLink, Sparkles, Save } from "lucide-react";
+import { Sparkles, Save } from "lucide-react";
 import { api, mensagemAmigavel } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 
 export default function ConfigAfiliados() {
-  const [chromeConectado, setChromeConectado] = useState(false);
-  const [abrindoChrome, setAbrindoChrome] = useState(false);
+  const [meliTag, setMeliTag] = useState("");
+  const [meliCookie, setMeliCookie] = useState("");
+  const [meliCookieConfigurado, setMeliCookieConfigurado] = useState(false);
+  const [salvandoMeli, setSalvandoMeli] = useState(false);
 
   const [shopeeAppId, setShopeeAppId] = useState("");
   const [shopeeSecret, setShopeeSecret] = useState("");
@@ -24,8 +27,8 @@ export default function ConfigAfiliados() {
 
   const carregar = useCallback(async () => {
     try {
-      const [status, shopee, config] = await Promise.all([
-        api<{ chrome: { conectado: boolean } }>("/status"),
+      const [meli, shopee, config] = await Promise.all([
+        api<{ tag: string; cookieConfigurado: boolean }>("/configuracoes/mercado-livre"),
         api<{ appId: string; configurado: boolean }>("/configuracoes/shopee"),
         api<{
           descontoMinimo: number;
@@ -34,7 +37,8 @@ export default function ConfigAfiliados() {
           chamadaIAAtiva: boolean;
         }>("/configuracoes"),
       ]);
-      setChromeConectado(status.chrome.conectado);
+      setMeliTag(meli.tag);
+      setMeliCookieConfigurado(meli.cookieConfigurado);
       setShopeeAppId(shopee.appId);
       setShopeeConfigurado(shopee.configurado);
       setDescontoMinimo(String(config.descontoMinimo));
@@ -50,18 +54,20 @@ export default function ConfigAfiliados() {
     carregar();
   }, [carregar]);
 
-  async function abrirChrome() {
-    setAbrindoChrome(true);
+  async function salvarMeli() {
+    setSalvandoMeli(true);
     try {
-      await api("/status/abrir-chrome", { method: "POST" });
-      toast.success(
-        "Janela do Chrome deve abrir em instantes. Faça login (com Google) e deixe a janela aberta — a sessão não sobrevive fechar/reabrir.",
-      );
+      await api("/configuracoes/mercado-livre", {
+        method: "PUT",
+        body: JSON.stringify({ tag: meliTag, cookie: meliCookie }),
+      });
+      toast.success("Configuração do Mercado Livre salva.");
+      setMeliCookie("");
+      carregar();
     } catch (err) {
       toast.error(mensagemAmigavel(err));
     } finally {
-      setAbrindoChrome(false);
-      setTimeout(carregar, 5000);
+      setSalvandoMeli(false);
     }
   }
 
@@ -108,20 +114,48 @@ export default function ConfigAfiliados() {
       <h2 className="mb-4 text-xl font-bold tracking-tight">Config. Afiliados</h2>
 
       <div
-        className={`mb-3.5 flex flex-wrap items-center justify-between gap-4 rounded-md border-l-4 bg-card p-4 shadow-sm ${chromeConectado ? "border-l-success" : "border-l-text-faint"}`}
+        className={`mb-3.5 flex flex-col gap-3.5 rounded-md border-l-4 bg-card p-4 shadow-sm ${meliCookieConfigurado ? "border-l-success" : "border-l-text-faint"}`}
       >
         <div>
-          <h3 className="font-semibold">Chrome (gerador de link ML)</h3>
+          <h3 className="font-semibold">
+            Mercado Livre
+            <span className="ml-2 text-sm font-normal text-muted-foreground">
+              {meliCookieConfigurado ? "Cookie configurado" : "Cookie não configurado"}
+            </span>
+          </h3>
           <p className="text-sm text-muted-foreground">
-            {chromeConectado
-              ? "Janela logada aberta."
-              : "Não conectado — clique em Abrir Chrome e faça login manualmente (Google bloqueia login automatizado)."}
+            Gera o link de afiliado (e captura produto de grupo monitorado) via HTTP direto, sem precisar de Chrome
+            aberto. A tag vem de qualquer link gerado no seu painel de afiliados do ML. O cookie expira periodicamente
+            — quando parar de funcionar, pegue um novo: logado no ML, F12 → aba Network → qualquer requisição →
+            Request Headers → copie o valor de <code>cookie</code> inteiro.
           </p>
         </div>
-        <Button onClick={abrirChrome} disabled={abrindoChrome}>
-          <ExternalLink className="h-4 w-4" />
-          Abrir Chrome
-        </Button>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="meli-tag">Tag de afiliado</Label>
+          <Input
+            id="meli-tag"
+            className="w-72"
+            placeholder="seuusuario20220908145641"
+            value={meliTag}
+            onChange={(e) => setMeliTag(e.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="meli-cookie">Cookie de sessão do Mercado Livre</Label>
+          <Textarea
+            id="meli-cookie"
+            rows={3}
+            placeholder={meliCookieConfigurado ? "Deixe em branco pra manter o atual" : "cookie1=valor1; cookie2=valor2; ..."}
+            value={meliCookie}
+            onChange={(e) => setMeliCookie(e.target.value)}
+          />
+        </div>
+        <div>
+          <Button onClick={salvarMeli} disabled={salvandoMeli || !meliTag}>
+            <Save className="h-4 w-4" />
+            Salvar
+          </Button>
+        </div>
       </div>
 
       <div

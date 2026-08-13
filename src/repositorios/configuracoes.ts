@@ -165,3 +165,39 @@ export async function obterShopeeConfig(): Promise<ShopeeConfig | null> {
 export async function definirShopeeConfig(config: ShopeeConfig): Promise<void> {
   await definir("shopee_config", JSON.stringify(config));
 }
+
+/**
+ * Cookie de sessão logada do Mercado Livre (conta de afiliado) — usado pra
+ * raspar página real de produto/ofertas via HTTP puro, sem Chrome (ver
+ * meliHttp.ts). Expira periodicamente (igual qualquer sessão web); quando
+ * expirar, a raspagem passa a falhar com erro claro pedindo pra atualizar
+ * aqui. Fica no banco (não no .env) porque precisa poder ser atualizado sem
+ * reiniciar o processo.
+ */
+export async function obterMeliSessionCookie(): Promise<string | null> {
+  return obter("meli_session_cookie");
+}
+
+export async function definirMeliSessionCookie(cookie: string): Promise<void> {
+  await definir("meli_session_cookie", cookie);
+}
+
+export interface MeliAfiliadoConfig {
+  /** Tag de afiliado (ex.: "seuusuario20220908145641") — vem junto de qualquer link gerado no painel de afiliados do ML, nunca muda. */
+  tag: string;
+}
+
+/**
+ * Tag de afiliado do Mercado Livre, configurável pela UI (Config.
+ * Afiliados) — antes vinha fixa do `.env` (MELI_AFFILIATE_TAG), migrado pra
+ * cá 2026-08-14 pra não precisar reiniciar o processo pra trocar, mesmo
+ * padrão da config da Shopee.
+ */
+export async function obterMeliAfiliadoConfig(): Promise<MeliAfiliadoConfig | null> {
+  const valor = await obter("meli_afiliado_config");
+  return valor ? (JSON.parse(valor) as MeliAfiliadoConfig) : null;
+}
+
+export async function definirMeliAfiliadoConfig(config: MeliAfiliadoConfig): Promise<void> {
+  await definir("meli_afiliado_config", JSON.stringify(config));
+}
