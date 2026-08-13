@@ -62,22 +62,26 @@ export async function buscarDadosProduto(url: string): Promise<DadosProdutoML | 
       .getAttribute("aria-label")
       .catch(() => null);
     // O seletor antigo (`.ui-pdp-gallery__figure img`) parou de bater com
-    // NADA — o ML trocou a estrutura da galeria. Confirmado em produção
-    // (2026-08-07, via diagnóstico temporário) que a imagem principal hoje é
-    // o próprio `<img>` com uma classe `ui-pdp-gallery--<orientação>`
-    // (`--horizontal` ou `--vertical`, dependendo do layout/template do
-    // anúncio — não tem como prever qual de antemão), não mais dentro de
-    // `<figure>`. Isso derrubava pra 0% a captura de imagem de TODO produto
-    // de grupo monitorado (Telegram e WhatsApp), que sempre passa por aqui —
-    // produto sem imagem nunca é reenviado (ver dispararProduto.ts), então
-    // cada um virava perda permanente. `[class*="ui-pdp-gallery--"]` casa com
-    // qualquer orientação (atual ou futura) direto na própria tag `<img>`,
-    // sem depender de qual container pai o ML decidir usar. Mantém os
-    // seletores antigos por último, por segurança, caso o ML volte a usar
-    // esses layouts em algum template.
+    // NADA — o ML trocou a estrutura da galeria pra um carrossel com uma
+    // classe `ui-pdp-gallery--<orientação>` (`--horizontal`, `--vertical`,
+    // `--square`...), não mais `<figure>`. Isso derrubava pra 0% a captura
+    // de imagem de TODO produto de grupo monitorado (Telegram e WhatsApp),
+    // que sempre passa por aqui — produto sem imagem nunca é reenviado (ver
+    // dispararProduto.ts), então cada um virava perda permanente.
+    //
+    // Confirmado em produção que essa classe pode estar no próprio `<img>`
+    // OU no `<div>` que o envolve direto, dependendo do layout do anúncio
+    // (não tem como prever qual de antemão) — daí o seletor cobrir os dois
+    // casos. NÃO inclui `.ui-pdp-gallery__clip img` (chegou a incluir, tirado
+    // em 2026-08-12): `clip` é o slide de VÍDEO do carrossel, não uma
+    // variante de zoom como supus sem confirmar — a imagem ali é a miniatura
+    // do vídeo (`clip-wrapper__thumbnail`), muitas vezes um frame escuro sem
+    // relação com o produto, e às vezes aparece antes da foto de verdade na
+    // ordem do DOM. Mantém o seletor antigo por último, por segurança, caso
+    // o ML volte a usar `<figure>` em algum template.
     const imagemEl = pagina
       .locator(
-        'img[class*="ui-pdp-gallery--"], .ui-pdp-gallery__clip img, .ui-pdp-gallery__figure img, figure.ui-pdp-gallery__figure img',
+        '[class*="ui-pdp-gallery--"] img, img[class*="ui-pdp-gallery--"], .ui-pdp-gallery__figure img, figure.ui-pdp-gallery__figure img',
       )
       .first();
     const imagemUrl =
