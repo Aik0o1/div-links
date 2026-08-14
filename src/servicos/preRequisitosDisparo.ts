@@ -1,8 +1,7 @@
 import * as canaisRepo from "../repositorios/canais.js";
-import { obterShopeeConfig } from "../repositorios/configuracoes.js";
+import { obterShopeeConfig, obterMeliSessionCookie, obterMeliAfiliadoConfig } from "../repositorios/configuracoes.js";
 import { env } from "../config/env.js";
 import { statusInstancia } from "../integracoes/evolutionApi/instancia.js";
-import { chromeConectado } from "./statusSistema.js";
 
 export interface ItemPreRequisito {
   id: string;
@@ -38,11 +37,18 @@ export async function avaliarPreRequisitosDisparo(): Promise<ItemPreRequisito[]>
   const temCanalML = ativos.some((c) => aceitaOrigem(c, ["mercado_livre", "monitorados"]));
   const temCanalShopee = ativos.some((c) => aceitaOrigem(c, ["shopee", "monitorados"]));
 
-  const [whatsappStatus, chromeOk] = await Promise.all([
+  const [whatsappStatus, meliOk] = await Promise.all([
     temCanalWhatsapp
       ? statusInstancia().catch(() => ({ conectado: false }))
       : Promise.resolve({ conectado: false }),
-    temCanalML ? chromeConectado() : Promise.resolve(false),
+    // Desde 2026-08-13 a geração de link/captura do ML usa cookie de sessão
+    // + HTTP puro, não mais Chrome (ver meliHttp.ts) — o pré-requisito real
+    // é ter tag + cookie configurados, não uma janela de Chrome aberta.
+    temCanalML
+      ? Promise.all([obterMeliAfiliadoConfig(), obterMeliSessionCookie()]).then(
+          ([config, cookie]) => !!config?.tag && !!cookie,
+        )
+      : Promise.resolve(false),
   ]);
 
   const itens: ItemPreRequisito[] = [
@@ -80,11 +86,11 @@ export async function avaliarPreRequisitosDisparo(): Promise<ItemPreRequisito[]>
 
   if (temCanalML) {
     itens.push({
-      id: "chrome-ml-conectado",
-      label: "Chrome do Mercado Livre conectado",
-      ok: chromeOk,
+      id: "meli-conectado",
+      label: "Mercado Livre conectado",
+      ok: meliOk,
       obrigatorio: true,
-      dica: "Algum canal ativo aceita produtos do Mercado Livre — abra e faça login no Chrome em Config. Afiliados.",
+      dica: "Algum canal ativo aceita produtos do Mercado Livre — conecte sua conta em Config. Afiliados.",
       aba: "afiliados",
     });
   }

@@ -1,18 +1,29 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, type ReactNode } from "react";
 import { toast } from "sonner";
-import { Sparkles, Save } from "lucide-react";
+import { Sparkles, Save, Store, ExternalLink, Cookie as CookieIcon, CheckCircle2 } from "lucide-react";
 import { api, mensagemAmigavel } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+
+/** Círculo numerado — usado nos passos dos guias (Mercado Livre, etc.). */
+function NumeroPasso({ children }: { children: ReactNode }) {
+  return (
+    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+      {children}
+    </span>
+  );
+}
 
 export default function ConfigAfiliados() {
   const [meliTag, setMeliTag] = useState("");
   const [meliCookie, setMeliCookie] = useState("");
   const [meliCookieConfigurado, setMeliCookieConfigurado] = useState(false);
   const [salvandoMeli, setSalvandoMeli] = useState(false);
+  const [guiaMeliAberto, setGuiaMeliAberto] = useState(false);
 
   const [shopeeAppId, setShopeeAppId] = useState("");
   const [shopeeSecret, setShopeeSecret] = useState("");
@@ -54,6 +65,11 @@ export default function ConfigAfiliados() {
     carregar();
   }, [carregar]);
 
+  function abrirGuiaMeli() {
+    setMeliCookie("");
+    setGuiaMeliAberto(true);
+  }
+
   async function salvarMeli() {
     setSalvandoMeli(true);
     try {
@@ -61,8 +77,9 @@ export default function ConfigAfiliados() {
         method: "PUT",
         body: JSON.stringify({ tag: meliTag, cookie: meliCookie }),
       });
-      toast.success("Configuração do Mercado Livre salva.");
+      toast.success("Mercado Livre conectado com sucesso!");
       setMeliCookie("");
+      setGuiaMeliAberto(false);
       carregar();
     } catch (err) {
       toast.error(mensagemAmigavel(err));
@@ -114,49 +131,125 @@ export default function ConfigAfiliados() {
       <h2 className="mb-4 text-xl font-bold tracking-tight">Config. Afiliados</h2>
 
       <div
-        className={`mb-3.5 flex flex-col gap-3.5 rounded-md border-l-4 bg-card p-4 shadow-sm ${meliCookieConfigurado ? "border-l-success" : "border-l-text-faint"}`}
+        className={`mb-3.5 flex flex-wrap items-center justify-between gap-4 rounded-md border-l-4 bg-card p-4 shadow-sm ${meliCookieConfigurado ? "border-l-success" : "border-l-text-faint"}`}
       >
-        <div>
-          <h3 className="font-semibold">
-            Mercado Livre
-            <span className="ml-2 text-sm font-normal text-muted-foreground">
-              {meliCookieConfigurado ? "Cookie configurado" : "Cookie não configurado"}
-            </span>
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            Gera o link de afiliado (e captura produto de grupo monitorado) via HTTP direto, sem precisar de Chrome
-            aberto. A tag vem de qualquer link gerado no seu painel de afiliados do ML. O cookie expira periodicamente
-            — quando parar de funcionar, pegue um novo: logado no ML, F12 → aba Network → qualquer requisição →
-            Request Headers → copie o valor de <code>cookie</code> inteiro.
-          </p>
+        <div className="flex items-start gap-3">
+          <div
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${meliCookieConfigurado ? "bg-success-soft text-success" : "bg-muted text-muted-foreground"}`}
+          >
+            <Store className="h-4.5 w-4.5" />
+          </div>
+          <div>
+            <h3 className="font-semibold">Mercado Livre</h3>
+            <p className="text-sm text-muted-foreground">
+              {meliCookieConfigurado
+                ? "Conectado — os links de afiliado são gerados automaticamente."
+                : "Ainda não conectado — sem isso, nenhum produto do Mercado Livre pode ser divulgado."}
+            </p>
+          </div>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="meli-tag">Tag de afiliado</Label>
-          <Input
-            id="meli-tag"
-            className="w-72"
-            placeholder="seuusuario20220908145641"
-            value={meliTag}
-            onChange={(e) => setMeliTag(e.target.value)}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="meli-cookie">Cookie de sessão do Mercado Livre</Label>
-          <Textarea
-            id="meli-cookie"
-            rows={3}
-            placeholder={meliCookieConfigurado ? "Deixe em branco pra manter o atual" : "cookie1=valor1; cookie2=valor2; ..."}
-            value={meliCookie}
-            onChange={(e) => setMeliCookie(e.target.value)}
-          />
-        </div>
-        <div>
-          <Button onClick={salvarMeli} disabled={salvandoMeli || !meliTag}>
-            <Save className="h-4 w-4" />
-            Salvar
-          </Button>
-        </div>
+        <Button onClick={abrirGuiaMeli}>{meliCookieConfigurado ? "Reconectar" : "Conectar"}</Button>
       </div>
+
+      <Dialog open={guiaMeliAberto} onOpenChange={setGuiaMeliAberto}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Conectar o Mercado Livre</DialogTitle>
+            <DialogDescription>
+              Duas informações da sua conta de afiliado. Leva uns 2 minutinhos — e você só precisa repetir o passo 2
+              de vez em quando (o passo 1 é só uma vez).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-5">
+            <div className="flex gap-3">
+              <NumeroPasso>1</NumeroPasso>
+              <div className="flex flex-1 flex-col gap-2">
+                <p className="text-sm font-medium">Copie a sua tag de afiliado</p>
+                <p className="text-sm text-muted-foreground">
+                  É o código que identifica você no Mercado Livre — nunca muda. Aparece em qualquer link que você já
+                  gerou no painel de afiliados.
+                </p>
+                <a
+                  href="https://www.mercadolivre.com.br/l/afiliados-home"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                >
+                  Abrir painel de afiliados do Mercado Livre
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+                <Input
+                  placeholder="Cole sua tag aqui (ex.: seuusuario20220908145641)"
+                  value={meliTag}
+                  onChange={(e) => setMeliTag(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <NumeroPasso>2</NumeroPasso>
+              <div className="flex flex-1 flex-col gap-2">
+                <p className="flex items-center gap-1.5 text-sm font-medium">
+                  <CookieIcon className="h-3.5 w-3.5 text-primary" />
+                  Cole o cookie de sessão
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Essa parte é meio técnica, mas é só seguir o passo a passo — depois de pronta uma vez, só precisa
+                  repetir daqui a algumas semanas, quando o sistema avisar que parou de funcionar.
+                </p>
+                <ol className="flex flex-col gap-1.5 rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
+                  <li>
+                    <b className="text-foreground">a.</b> Abra o mercadolivre.com.br numa aba, logado com a sua conta
+                    de afiliado.
+                  </li>
+                  <li>
+                    <b className="text-foreground">b.</b> Aperte a tecla <code className="rounded bg-muted px-1 py-0.5">F12</code>{" "}
+                    — abre um painel técnico do navegador.
+                  </li>
+                  <li>
+                    <b className="text-foreground">c.</b> Clique na aba <b className="text-foreground">"Network"</b> (ou "Rede") lá em cima.
+                  </li>
+                  <li>
+                    <b className="text-foreground">d.</b> Aperte <code className="rounded bg-muted px-1 py-0.5">F5</code> pra recarregar a página.
+                  </li>
+                  <li>
+                    <b className="text-foreground">e.</b> Clique em qualquer uma das linhas que apareceram na lista.
+                  </li>
+                  <li>
+                    <b className="text-foreground">f.</b> Ache <b className="text-foreground">"Request Headers"</b> e a linha que começa com{" "}
+                    <code className="rounded bg-muted px-1 py-0.5">cookie:</code>
+                  </li>
+                  <li>
+                    <b className="text-foreground">g.</b> Copie o valor inteiro (é bem comprido, tudo bem) e cole abaixo.
+                  </li>
+                </ol>
+                <Textarea
+                  rows={3}
+                  className="font-mono text-xs"
+                  placeholder={meliCookieConfigurado ? "Já configurado — cole aqui só se for trocar" : "cookie1=valor1; cookie2=valor2; ..."}
+                  value={meliCookie}
+                  onChange={(e) => setMeliCookie(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {meliCookieConfigurado && (
+              <p className="flex items-center gap-1.5 text-sm text-success">
+                <CheckCircle2 className="h-4 w-4" />
+                Já tem um cookie salvo — só preencha de novo se quiser trocar.
+              </p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button onClick={salvarMeli} disabled={salvandoMeli || !meliTag}>
+              <Save className="h-4 w-4" />
+              Salvar e conectar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div
         className={`mb-6 flex flex-col gap-3.5 rounded-md border-l-4 bg-card p-4 shadow-sm ${shopeeConfigurado ? "border-l-success" : "border-l-text-faint"}`}
