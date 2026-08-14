@@ -2,7 +2,7 @@
 
 > Complementa o `PROJETO_AUTOMACAO_AFILIADOS.md` (especificação original). Este arquivo registra o que já foi construído, as decisões tomadas (e por quê) e o que falta, pra continuar o desenvolvimento em qualquer máquina/sessão.
 
-Última atualização: 2026-07-26.
+Última atualização: 2026-08-14.
 
 ---
 
@@ -30,29 +30,30 @@ Testado de ponta a ponta: captura real (608-1105 produtos novos por rodada, todo
 
 ### 2.1 Mercado Livre — captura de produtos
 
-- **`/sites/MLB/search` (busca pública) está bloqueado (403) pra apps novas**, e a combinação `/products/search` + `/products/{id}/items` (API de Catálogo, autenticada via OAuth) **funciona mas tinha taxa de acerto baixíssima** (~5% dos candidatos tinham desconto real) e trazia produtos genéricos/pouco relevantes (kits de roupa de fabricante obscuro, etc.). Essa abordagem foi **substituída** pela de baixo.
-- **Solução atual: scraping da própria aba "Ofertas" do site** (`mercadolivre.com.br/ofertas?page=N`), via Playwright conectado por CDP na mesma janela de Chrome logada que já usamos pro link builder (`src/integracoes/mercadoLivre/ofertasScraper.ts`). Essa página é renderizada client-side (dados não vêm no HTML puro, por isso `curl` simples não funciona) e retorna produtos **já curados pelo ML como promoção de verdade**, com desconto, nome, imagem e link reais — muito melhor volume e qualidade que a API de Catálogo.
+> **Superado pela seção 2.11** — captura hoje é via HTTP puro (cookie de sessão), não mais Chrome/CDP. Histórico abaixo preservado pelo raciocínio de descarte da API oficial, que continua válido.
+
+- **`/sites/MLB/search` (busca pública) está bloqueado (403) pra apps novas**, e a combinação `/products/search` + `/products/{id}/items` (API de Catálogo, autenticada via OAuth) **funciona mas tinha taxa de acerto baixíssima** (~5% dos candidatos tinham desconto real) e trazia produtos genéricos/pouco relevantes (kits de roupa de fabricante obscuro, etc.). Essa abordagem foi **substituída** pela de baixo. **OAuth removido do código** (migration `014_remove_oauth_tokens.sql`, 2026-08-13) — nunca chegou a ser usado no fluxo ativo, era resquício dessa tentativa original. `src/integracoes/mercadoLivre/auth.ts`/`autorizar.ts` e `npm run meli:autorizar` **não existem mais**.
+- **Solução: scraping da própria aba "Ofertas" do site** (`mercadolivre.com.br/ofertas?page=N`) — retorna produtos **já curados pelo ML como promoção de verdade**, com desconto, nome, imagem e link reais, muito melhor volume e qualidade que a API de Catálogo. Implementação de HTTP mudou na seção 2.11 (era Chrome/CDP, virou HTTP+cookie), os seletores/lógica de negócio abaixo continuam valendo.
   - Seletores usados: `.poly-card` (cada card), `.poly-component__title` (nome + link), `img` (imagem), `.poly-price__current .andes-money-amount` (preço atual, via `aria-label` tipo "253 reais com 80 centavos"), `.andes-money-amount--previous` (preço original, mesmo formato com prefixo "Antes:").
   - Paginação simples via `?page=N` (testado e confirmado — páginas diferentes trazem produtos diferentes).
   - **Casamento com nicho — 2ª versão, por categoria real do ML (não por palavra-chave)**: a primeira versão comparava o título do produto contra uma lista de termos por nicho — isso não era a intenção certa (nicho é pra decidir **o que cada canal recebe**, não pra descartar produto na captura) e também tinha baixo volume/bugs de acento (`relogio` não batia com `Relógio`). A versão atual usa o **filtro de categoria real da barra lateral da aba Ofertas**: `mercadolivre.com.br/ofertas?category=MLB1246` filtra a mesma listagem (`.poly-card`) só daquela categoria — sem ambiguidade, sem casamento de texto. Cada nicho agora guarda uma lista de `categoria_ids` (ex.: `MLB1246` = Beleza e Cuidado Pessoal) em vez de termos de busca. Descobrir o ID: abrir a aba Ofertas, clicar na categoria na barra lateral, ler `?category=` na URL.
     - IDs mapeados: tecnologia = `MLB1051,MLB1000,MLB1648` (Celulares, Eletrônicos, Informática) · beleza = `MLB1246` · moda = `MLB1430,MLB3937` (Calçados/Roupas/Bolsas, Joias e Relógios) · casa = `MLB1574,MLB5726` (Casa/Móveis/Decoração, Eletrodomésticos) · gamer = `MLB1144` (Games).
     - Captura agora busca 2 páginas por categoria de cada nicho ativo (não mais um número fixo de páginas da aba geral) — resultado real: **608 produtos** numa rodada (vs. 32 da versão por palavra-chave), todos corretamente tagueados, zero descartados por "não achou palavra-chave".
     - A aba Produtos ganhou um filtro por nicho (o limite de listagem também subiu de 200 pra 1000, já que agora há muito mais produtos).
-  - A API de Catálogo (`/products/search` etc.) e o OAuth do ML (`auth.ts`, `npm run meli:autorizar`) continuam no código (podem servir pra outra coisa no futuro) mas **não são mais usados na captura** — a aba Status ainda mostra a validade do token só informativamente.
 - **Dado de cupom específico (tipo "cupom: PRESENTE") não é acessível pela API oficial no nosso nível de acesso** (testamos `deal_ids`, sempre vazio; `/items/{id}`, 403). A aba Ofertas, no entanto, já traz o desconto percentual real direto no card, então esse problema ficou menos relevante — o desconto exibido lá é a promoção de fato.
-- **Escuta de grupos de terceiros (Telegram/WhatsApp) foi cogitada** como fonte alternativa, mas **foi explicitamente adiada** pelo usuário. Não retomar sem o usuário pedir.
+- **Escuta de grupos de terceiros (Telegram/WhatsApp) foi cogitada** como fonte alternativa, mas **foi explicitamente adiada** pelo usuário. Não retomar sem o usuário pedir. *(Retomado depois, ver seções 2.7-2.9.)*
 - **Nichos**: cada nicho tem um id, nome e lista de termos de busca — agora usados como **palavras-chave de casamento** contra o título de cada oferta raspada, não mais como termo de busca de API (tabela `nichos` no Postgres, gerenciável pela aba Nichos da UI). 5 nichos seedados: tecnologia, beleza, moda, casa, gamer.
-- A captura (`capturarProdutos.ts`) **também depende da janela do Chrome logada** agora (mesma dependência do link builder, ver seção 2.2) — sem ela aberta, a captura falha.
 
 ### 2.2 Geração de link de afiliado
 
-- **Não existe API oficial do Mercado Livre pra gerar link curto `meli.la`.** Confirmado via pesquisa (inclusive reclamação no Reclame Aqui com esse título literal). A ferramenta "Gerador de produtos recomendados" (`mercadolivre.com.br/afiliados/linkbuilder`) só existe como página web autenticada.
-- **Solução**: automação via Playwright conectando por **CDP** (`chromium.connectOverCDP('http://localhost:9222')`) numa janela de **Chrome real, aberta manualmente pelo usuário e mantida logada**. O script preenche a URL do produto, clica "Gerar" e lê o resultado do mesmo `<textarea aria-label="Copie o link e comece a compartilhá-lo">` (esse elemento é reaproveitado tanto pro link de sucesso quanto pra mensagem de erro "Este URL não é permitido pelo Programa").
-- **Por que não dá pra automatizar o login também**: o Google bloqueia login automatizado (mensagem "esse navegador pode não ser seguro") em qualquer navegador pilotado por CDP — mesmo usando o Chrome real (`channel: "chrome"`), mesmo sem headless. A única saída é o usuário logar manualmente numa janela **não controlada pelo Playwright no momento do login**, e a automação só entra depois, conectando numa sessão já autenticada.
-- **A sessão não sobrevive ao fechar a janela** (testamos: fechar e reabrir com o profile salvo em disco redireciona pro login de novo). Por isso o modelo atual é "deixe a janela do Chrome aberta o tempo todo", não "logue uma vez e feche".
-- **Sem fallback** — foi removido por pedido explícito do usuário (o antigo fallback usava `matt_word`/`matt_tool` + TinyURL, com um hop extra que ele não gostava). Se a janela do Chrome não estiver aberta/logada, a geração de link falha (e o disparo correspondente fica marcado como `falhou` em `disparos`, sem corromper o produto).
-- Resultado é cacheado no Redis (`link_afiliado:mercado_livre:{urlProduto}`) pra nunca gerar o mesmo link duas vezes.
-- **Status na UI**: a aba Status tenta conectar no CDP só pra checar (nunca fecha a conexão — fechar poderia matar a janela real do usuário).
+> **Superado pela seção 2.11** — hoje é HTTP puro (cookie + token CSRF), sem Chrome. Histórico abaixo preservado (a conclusão "não existe API oficial documentada" continua certa — o que mudou foi achar o endpoint *interno* que a própria página usa, e descobrir que dá pra chamar ele direto).
+
+- **Não existe API oficial DOCUMENTADA do Mercado Livre pra gerar link curto `meli.la`.** Confirmado via pesquisa (inclusive reclamação no Reclame Aqui com esse título literal). A ferramenta "Gerador de produtos recomendados" (`mercadolivre.com.br/afiliados/linkbuilder`) só existe como página web autenticada — mas ela chama uma API interna por trás (ver seção 2.11), só não é uma API pública/suportada.
+- **Solução original (2026-07, descontinuada 2026-08-13)**: automação via Playwright conectando por **CDP** (`chromium.connectOverCDP('http://localhost:9222')`) numa janela de **Chrome real, aberta manualmente pelo usuário e mantida logada**. O script preenchia a URL do produto, clicava "Gerar" e lia o resultado do mesmo `<textarea aria-label="Copie o link e comece a compartilhá-lo">`.
+- **Por que não dava pra automatizar o login também**: o Google bloqueia login automatizado (mensagem "esse navegador pode não ser seguro") em qualquer navegador pilotado por CDP — mesmo usando o Chrome real (`channel: "chrome"`), mesmo sem headless. Única saída era o usuário logar manualmente numa janela **não controlada pelo Playwright no momento do login**.
+- **A sessão não sobrevivia ao fechar a janela** (testado: fechar e reabrir com o profile salvo em disco redirecionava pro login de novo). Por isso o modelo era "deixe a janela do Chrome aberta o tempo todo".
+- **Sem fallback** — tinha sido removido por pedido explícito do usuário (o antigo fallback usava `matt_word`/`matt_tool` + TinyURL, com um hop extra que ele não gostava). *(Ironicamente, `matt_word`/`matt_tool` é exatamente o mecanismo por trás da solução atual — ver seção 2.11. O que mudou não foi o mecanismo, foi tirar o TinyURL do meio.)*
+- Resultado é cacheado no Redis (`link_afiliado:mercado_livre:{urlProduto}`) pra nunca gerar o mesmo link duas vezes — **isso continua igual** na versão atual.
 
 ### 2.3 Geração de conteúdo pro envio
 
@@ -78,7 +79,7 @@ Testado de ponta a ponta: captura real (608-1105 produtos novos por rodada, todo
 ### 2.6 Painel web / configuração dinâmica
 
 - Nichos, desconto mínimo e canais de destino **viraram tabelas no Postgres** (`nichos`, `configuracoes`, `canais_destino`) em vez de variáveis de `.env` — editáveis em tempo real pela UI, sem restart.
-- **Credenciais continuam só no `.env`** (client_secret do ML, token do Telegram) — decisão explícita do usuário. A UI mostra status ("conectado"/"token válido até X"), nunca edita segredo.
+- **Credenciais continuam só no `.env`** (client_secret do ML, token do Telegram) — decisão explícita do usuário, válida na época. A UI mostra status ("conectado"/"token válido até X"), nunca edita segredo. *(Mudou depois: tag/cookie do ML e credenciais da Shopee viraram editáveis pela UI também, guardadas no banco — ver seção 2.11. `client_secret do ML` nem existe mais, era do OAuth removido.)*
 - **Disparo passa a ser manual** — captura só grava produtos no banco (`status = 'capturado'`); o usuário revisa na aba Produtos e clica "Disparar" por canal elegível. Isso substituiu o worker automático que existia antes (`disparoTeste.ts`, removido).
 - **Motor de Regras (seção 3.6 do doc original) finalmente ligado**: o disparo verifica `canal.ativo`, `categorias_permitidas` (compara com `produto.nicho`; lista vazia/null = aceita qualquer nicho), `desconto_minimo` do canal (recalculado a partir do preço real do produto) e `intervalo_minimo_minutos` (consulta o último envio bem-sucedido nesse canal em `disparos`).
 - **Deduplicação real implementada** (seção 3.3 do doc original): `produtos.hash_conteudo` (sha1 de título+preço+url**+nicho**) com `ON CONFLICT DO NOTHING` — captura repetida no mesmo nicho não duplica, mas o mesmo produto real pode existir em nichos diferentes (ex.: "tecnologia" e "geral") de propósito.
@@ -140,6 +141,19 @@ Além dos bugs, novas features pedidas junto:
 
 Confirmado com dados reais (não testes sintéticos) depois de todas as correções: Telegram capturou um produto novo via polling, WhatsApp capturou um produto novo via webhook, ambos em paralelo, ambos com nicho/cupom corretos.
 
+### 2.11 Eliminação do Chrome — captura e link do ML via HTTP puro (2026-08-13/14)
+
+Motivado por dois problemas reais acumulados ao longo de agosto (várias sessões desse mesmo período): o processo caindo por `unhandledRejection` quando o Chrome fechava/crashava no meio de uma captura (derrubava disparo automático + monitoramento inteiros até reinício manual), e a conversa sobre transformar o sistema em SaaS — rodar uma janela de Chrome real logada por cliente não escala. A pergunta virou "dá pra tirar o Chrome da equação de vez?".
+
+- **Descoberta 1 — a página do ML (produto e aba Ofertas) é renderizada no servidor (SSR)**: testado direto, `fetch()` com o cookie de sessão certo (extraído do Chrome real, via `contexto.cookies()`) devolve o HTML **já com título, preço e imagens da galeria prontos** — nunca precisou de JS/hidratação pra esses dados, só o Chrome nunca tinha sido testado sem ele. `cheerio` (parser de HTML estilo jQuery, instalado nesse commit) reaproveita os **mesmos seletores CSS** que já existiam pro Playwright — porta mecânica, baixo risco.
+- **Descoberta 2 — o botão "Gerar" do link builder chama uma API JSON interna real**: `POST /affiliate-program/api/v2/affiliates/createLink`, body `{urls: [...], tag: "<tag do afiliado>"}`, autenticação via cookie + header `x-csrf-token`. Achado escutando o tráfego de rede da aba real (Playwright `page.on("request"/"response")`, só leitura, sem interferir no disparo em andamento) durante um ciclo normal de disparo automático. O token CSRF necessário vem embutido no próprio HTML da página do link builder (`<meta name="csrf-token" content="...">`) — não precisa de nenhum passo extra de autenticação além do cookie.
+- **Cookie de sessão vira config do banco, não do `.env`**: `configuracoes.meli_session_cookie`, editável via `PUT /api/configuracoes/mercado-livre` sem reiniciar o processo. Expira periodicamente (igual qualquer sessão web) — quando expirar, `SessaoMeliExpiradaError` é lançada e logada (a rede de segurança de `unhandledRejection`, ver abaixo, garante que isso não derruba nada), até alguém colar um cookie novo pela UI.
+- **Tentativa intermediária revertida**: antes de achar o `createLink`, foi implementado um "link direto" — só apendar `?matt_word=<tag>&matt_tool=<toolId>` na URL do produto, sem chamar API nenhuma (mecanismo de rastreamento nativo do ML, o mesmo usado por outros afiliados reais capturados de grupos monitorados). **Saiu sem contar comissão em produção** (relatado pelo usuário: produto chegou com link "sem ser de afiliado") — provavelmente porque pular o redirect oficial (`meli.la`) não ativa o rastreamento com a mesma confiabilidade de passar pelo domínio curto de verdade. Revertido pro `createLink` (link curto oficial de verdade) no mesmo dia. `linkDireto.ts` foi **deletado** (não fica como fallback — é uma abordagem sabidamente ruim pra esse caso, mantê-la around só arriscaria alguém reativar sem saber do problema).
+- **Rede de segurança adicionada independente disso**: `process.on("unhandledRejection", ...)` em `iniciar.ts` — loga em vez de derrubar o processo. Motivada pelo mesmo padrão de crash (`browserContext.waitForEvent: Target page... has been closed`) que se repetiu várias vezes ao longo do projeto; a causa exata nunca foi 100% isolada (rastreados todos os call sites óbvios, todos já tinham `try/catch`), então isso é defesa em profundidade, não a correção do bug original.
+- **Consequência prática**: Google Chrome deixou de ser pré-requisito do sistema. `browserConexao.ts`, `paginaBackground.ts`, `produtoScraper.ts`, `ofertasScraper.ts`, `linkBuilderAutomatizado.ts` continuam no repo (não foram deletados) mas **nada mais os importa** — só `meliHttp.ts` (novo) + `produtoScraperHttp.ts`/`ofertasScraperHttp.ts` (novos, via cheerio) estão em uso.
+- **UI redesenhada pra gente leiga** (pedido explícito do usuário, pensando num futuro SaaS com pessoas não-técnicas usando): o card "Chrome" da aba Config. Afiliados virou card "Mercado Livre", com um modal de "Conectar" em 2 passos numerados (tag com link direto pro painel de afiliados; cookie com passo a passo em linguagem simples, tipo abrir DevTools/Network, sem pressupor conhecimento técnico). O item de checklist do Dashboard que checava `chromeConectado()` também foi corrigido pra checar tag+cookie configurados — estava gerando um aviso falso ("abra o Chrome") mesmo com tudo certo.
+- **Bugs de seletor de imagem resolvidos no caminho** (afetam tanto a versão Chrome quanto a HTTP nova, já que reaproveita os seletores): o ML mudou a estrutura da galeria pra uma classe `ui-pdp-gallery--<orientação>` (`--horizontal`/`--vertical`/`--square`, variando por template de anúncio) que pode estar no `<img>` ou no `<div>` pai — seletor final cobre os dois casos. E `.ui-pdp-gallery__clip` (que uma correção anterior incluiu, achando ser variante de zoom) é na verdade a miniatura do **slide de vídeo** do carrossel — removido, causava produto saindo com imagem escura genérica.
+
 ---
 
 ## 3. Arquitetura / arquivos
@@ -152,12 +166,12 @@ src/
   types/          produto.ts (ProdutoBruto, FonteDeProdutos)
   integracoes/
     mercadoLivre/
-      auth.ts                      OAuth2 (authorization_code + refresh_token), tokens no Postgres — só usado pro status na UI hoje
-      autorizar.ts                  CLI pra autorizar uma vez (npm run meli:autorizar)
-      ofertasScraper.ts              buscarOfertasMercadoLivre(paginas) — raspa a aba Ofertas via CDP
-      linkBuilderAutomatizado.ts    Playwright/CDP — gera link meli.la real
-      produtoScraper.ts              resolverUrlFinal (segue redirect via Chrome), buscarDadosProduto (título/preço/imagem reais da PDP)
-      parsePreco.ts                  parsePreco(texto) — compartilhado entre ofertasScraper e produtoScraper
+      meliHttp.ts                    fetch autenticado via cookie de sessão salvo no banco — buscarPaginaMeli (GET+HTML), criarLinkOficial (POST no createLink real, com token CSRF extraído do HTML). Base de tudo abaixo, ver seção 2.11
+      produtoScraperHttp.ts          resolverUrlFinal, buscarDadosProduto, buscarProdutoEmPerfilSocial — via cheerio em cima do HTML de meliHttp.ts (EM USO)
+      ofertasScraperHttp.ts          buscarOfertasMercadoLivre(paginas) — raspa a aba Ofertas via cheerio (EM USO)
+      parsePreco.ts                  parsePreco(texto) — compartilhado entre os dois scrapers acima
+      ofertasScraper.ts, produtoScraper.ts, linkBuilderAutomatizado.ts, browserConexao.ts, paginaBackground.ts
+                                      versões antigas via Chrome/Playwright/CDP — SEM USO desde 2026-08-13 (nada importa mais), mantidas no repo sem remoção (ver seção 2.11)
     telegram/
       bot.ts                        enviarFotoComLegenda / enviarFotoLocalComLegenda / enviarTexto
     evolutionApi/
@@ -179,12 +193,17 @@ src/
     agendadorDisparo.ts  roda em loop (1x/min): por canal ativo, confere intervalo e dispara sozinho se tiver produto elegível
     agendadorMonitorTelegram.ts  roda em loop (45s): verificarNovasMensagens em todo grupo monitorado do Telegram (polling — ver seção 2.10)
     rotas/          status.ts, nichos.ts, configuracoes.ts, canais.ts, produtos.ts, disparoAutomatico.ts, whatsapp.ts, telegramListener.ts
-    public/         index.html, app.js, styles.css — frontend puro, sem build/framework
+    public/         build gerado pelo Vite (npm run build:frontend) — index.html + assets/, não editar direto
   cli/
     capturar.ts     equivalente de terminal do botão "Capturar agora" (npm run capturar)
+
+frontend/src/       React + Vite + Tailwind (não é mais "frontend puro sem framework" — reescrito em algum
+                    ponto não documentado aqui, achado só ao atualizar esse arquivo em 2026-08-14). App.tsx
+                    (abas via estado, sem router), paginas/*.tsx (uma por aba), components/ui/* (primitivos
+                    tipo shadcn: button, dialog, input, textarea, switch, tabs...)
 ```
 
-Tabelas no Postgres: `produtos` (+ coluna `nicho`), `canais_destino`, `disparos`, `oauth_tokens`, `nichos`, `configuracoes`, `cupons_capturados`, `cupons_disparos`, `schema_migrations`.
+Tabelas no Postgres: `produtos` (+ coluna `nicho`), `canais_destino`, `disparos`, `nichos`, `configuracoes`, `cupons_capturados`, `cupons_disparos`, `schema_migrations`. `oauth_tokens` **removida** (migration `014`, ver seção 2.1).
 
 ---
 
@@ -192,11 +211,12 @@ Tabelas no Postgres: `produtos` (+ coluna `nicho`), `canais_destino`, `disparos`
 
 ```bash
 npm install
-npx playwright install chromium
-docker compose up -d          # Postgres + Redis
+docker compose up -d          # Postgres + Redis + Evolution API
 npm run migrate               # cria schema + seed de nichos/config/1 canal
 npm run ui                    # sobe o painel em http://localhost:$PORTA_UI
 ```
+
+Não precisa mais de `npx playwright install chromium` nem de Chrome instalado — desde 2026-08-13 nada no fluxo ativo abre navegador (ver seção 2.11). `playwright` continua como dependência no `package.json` só porque os arquivos antigos (sem uso) ainda importam ele.
 
 Também precisa do **Ollama** instalado ([ollama.com](https://ollama.com)) rodando localmente, com o modelo baixado: `ollama pull qwen2.5:3b` (ou outro, ajustando `OLLAMA_MODELO` no `.env`) — usado só pra gerar a "chamada" de cada produto, não é essencial pro resto do sistema funcionar (se o Ollama não estiver rodando, o disparo segue sem a chamada, só loga um aviso).
 
@@ -207,35 +227,29 @@ Copie o `.env` da máquina antiga **por fora do git** (nunca vai pro repositóri
 | Variável | O que é |
 |---|---|
 | `DATABASE_URL`, `REDIS_URL`, `LOG_LEVEL`, `PORTA_UI` | Infra local |
-| `MELI_CLIENT_ID`, `MELI_CLIENT_SECRET`, `MELI_REDIRECT_URI`, `MELI_SITE_ID` | App OAuth em developers.mercadolivre.com.br. `MELI_REDIRECT_URI` precisa ser HTTPS com domínio de verdade (ML rejeita `localhost`) — usamos um link do `webhook.site` |
 | `TELEGRAM_BOT_TOKEN` | Bot via @BotFather |
 | `EVOLUTION_API_KEY` | Gerada por você (ex.: `openssl rand -hex 16`) — precisa ser o **mesmo valor** em `AUTHENTICATION_API_KEY` no `docker-compose.yml` (já referenciado via `${EVOLUTION_API_KEY}`, não precisa editar o compose) |
 | `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` | Credenciais de app em [my.telegram.org](https://my.telegram.org) (login com o número que vai monitorar o grupo, "API development tools", cria um app qualquer) — usadas pelo monitor de cupons (MTProto/GramJS), não confundir com `TELEGRAM_BOT_TOKEN` |
+| `SHOPEE_APP_ID`, `SHOPEE_SECRET` | Fallback opcional — hoje configurável pela UI (aba Config. Afiliados), guardado no banco. `.env` só é lido se o banco não tiver nada salvo |
 
-Nichos, desconto mínimo e canais de destino **não estão mais no `.env`** — vêm do banco (seedados pela migration `003_ui.sql`) e são editáveis na UI.
+`MELI_CLIENT_ID`/`MELI_CLIENT_SECRET`/`MELI_REDIRECT_URI`/`MELI_SITE_ID` (OAuth do ML) **não existem mais** — removidos junto com a tabela `oauth_tokens` (seção 2.1). Tag e cookie de sessão do Mercado Livre também **não ficam no `.env`** — só pela UI (aba Config. Afiliados → card "Mercado Livre" → "Conectar"), guardados no banco (`configuracoes.meli_afiliado_config` e `.meli_session_cookie`).
+
+Nichos, desconto mínimo e canais de destino **também não estão no `.env`** — vêm do banco (seedados pela migration `003_ui.sql`) e são editáveis na UI.
 
 ### O que NÃO transfere automaticamente (precisa refazer na máquina nova):
 
-1. **Token OAuth do Mercado Livre** (tabela `oauth_tokens`) — rodar `npm run meli:autorizar` de novo (imprime URL, autoriza, cola o `?code=...` de volta).
-2. **Sessão logada do Chrome pro gerador de link** — sem automação possível pro login (ver seção 2.2). Rodar manualmente:
-   ```bash
-   google-chrome --remote-debugging-port=9222 \
-     --user-data-dir="<caminho-do-projeto>/.playwright-ml-session" \
-     "https://www.mercadolivre.com.br/afiliados/linkbuilder#hub"
-   ```
-   Logar (com Google) e **deixar a janela aberta**. A aba Status da UI mostra se está conectado.
-3. **Sessão do WhatsApp** (volume Docker `evolution_instances` + Postgres `evolution-postgres`) — não migra sozinha pra máquina nova (a menos que você copie os volumes Docker junto). Se não copiar: aba Status → "Conectar" → escanear o QR de novo com o celular.
-4. **Sessão do monitor de Telegram** (fica no Postgres principal, tabela `configuracoes` — migra junto se você copiar o volume `divulga_pg_data`; se não copiar, só logar de novo pela aba Status → "Conectar", telefone → código → senha se tiver 2FA).
+1. **Tag + cookie de sessão do Mercado Livre** (tabela `configuracoes`, fica no banco — migra junto se você copiar o volume `divulga_pg_data`; se não copiar, reconecte pela aba Config. Afiliados → "Conectar", o próprio painel explica o passo a passo). O cookie expira periodicamente de qualquer forma, independente de migração — ver seção 2.11.
+2. **Sessão do WhatsApp** (volume Docker `evolution_instances` + Postgres `evolution-postgres`) — não migra sozinha pra máquina nova (a menos que você copie os volumes Docker junto). Se não copiar: aba Status → "Conectar" → escanear o QR de novo com o celular.
+3. **Sessão do monitor de Telegram** (fica no Postgres principal, tabela `configuracoes` — migra junto se você copiar o volume `divulga_pg_data`; se não copiar, só logar de novo pela aba Status → "Conectar", telefone → código → senha se tiver 2FA).
 
 ---
 
 ## 5. Comandos disponíveis
 
 ```bash
-npm run docker:up / docker:down     # sobe/derruba Postgres+Redis
+npm run docker:up / docker:down     # sobe/derruba Postgres+Redis+Evolution API
 npm run migrate                      # aplica migrations pendentes
-npm run meli:autorizar               # autoriza (ou renova) o OAuth do ML
-npm run ui                           # sobe o painel web (Express + frontend estático)
+npm run ui                           # sobe o painel web (Express + build do Vite)
 npm run capturar                     # equivalente de terminal do botão "Capturar agora"
 ```
 
@@ -249,7 +263,7 @@ Já feito: Fundação (1), Captura Mercado Livre (2), Link de afiliado (3), "Ger
 
 Ainda não feito, na ordem do documento original:
 - O Parser/Normalização com LLM (seção 3.2 do doc original) continua sem uso — o monitor de cupons extrai código/desconto/mínimo com **regex simples** (`parsearCupons.ts`), não precisou de LLM porque o formato dos grupos monitorados é consistente o bastante.
-- **Shopee** — **pausado**: usuário já é afiliado, mas o acesso à API oficial (App ID + Secret Key da Shopee Affiliate Open API) precisa ser solicitado à Shopee e ainda está aguardando aprovação. Retomar quando as credenciais chegarem.
+- **Shopee** — **retomado e em uso** (credenciais aprovadas em algum momento não documentado aqui — achado só ao atualizar esse arquivo em 2026-08-14, já tinha `capturarProdutoShopee.ts`/`capturarProdutosShopee.ts` funcionando, canal dedicado "teste shopee" recebendo produtos de grupo monitorado e captura em massa). App ID/Secret configuráveis pela UI (aba Config. Afiliados), com fallback pro `.env` se o banco não tiver nada salvo.
 - **Observabilidade** — só logs via pino hoje, sem métricas.
 - **Captura agendada/automática** (diferente de disparo automático, que já existe — ver seção 1) — chegou a ser implementada (agendador em processo, configurável) mas foi **explicitamente revertida a pedido do usuário**: captura continua só manual (botão/API). Não reintroduzir sem pedido explícito. O **disparo**, por outro lado, roda automaticamente sozinho (`agendadorDisparo.ts`) — não confundir os dois.
 
@@ -257,14 +271,14 @@ Ainda não feito, na ordem do documento original:
 
 ## 7. Cuidados / coisas pra não esquecer
 
-- Nunca colar segredo real (client_secret, bot token) no `.env.example` — só no `.env` (gitignorado).
-- A janela do Chrome logada precisa ficar aberta continuamente — **tanto a captura (raspagem da aba Ofertas) quanto o link de afiliado** dependem dela agora. Se cair, os dois falham (a captura lança erro, o disparo fica registrado como `falhou` em `disparos`).
-- Nunca chamar `browser.close()` numa conexão `connectOverCDP` a essa janela — é a sessão real do usuário, fechar a "conexão" pode fechar a janela de verdade (por isso a checagem de status em `servidor/rotas/status.ts` nunca fecha, só tenta conectar).
+- Nunca colar segredo real (bot token, etc.) no `.env.example` — só no `.env` (gitignorado). Tag/cookie do ML e credenciais da Shopee não ficam nem no `.env` de verdade mais — pela UI, no banco (ver seção 2.11 / 2.6).
+- **Chrome não é mais necessário pro sistema funcionar** (desde 2026-08-13, ver seção 2.11) — captura e link do ML são HTTP puro + cookie de sessão. O cookie expira periodicamente; quando expirar, capturar de grupo monitorado passa a falhar (logado, não derruba nada) até colar um cookie novo em Config. Afiliados. Os arquivos antigos de Chrome/CDP continuam no repo sem uso — não reativar sem revisar se ainda fazem sentido.
+- Existe um handler global de `unhandledRejection` (`iniciar.ts`) que loga em vez de derrubar o processo — antes disso, um erro isolado numa captura (ex.: Chrome fechando no meio, na versão antiga) derrubava disparo automático + monitoramento inteiros. Não é uma correção da causa raiz de nenhum bug específico, é rede de segurança.
 - Nicho = **categorias reais do ML** (`categoria_ids`, tipo `MLB1246`), não mais palavra-chave. Editável na aba Nichos; instrução de como descobrir o ID está na própria UI.
 - Cada captura **apaga a tabela `produtos` inteira** (todos os status, inclusive `enviado`) antes de inserir a nova leva (`produtosRepo.removerTodos()`) — o histórico de `disparos` some junto, por causa do `ON DELETE CASCADE` (migration `004`).
 - Porta padrão do painel é 3400 (não 3000) — ver seção 5.
-- Se o layout da aba Ofertas do Mercado Livre mudar (classes CSS `.poly-card`, `.poly-component__title`, etc.), o scraper (`ofertasScraper.ts`) quebra silenciosamente (retorna 0 ofertas) — não é algo sob nosso controle, só ajustar os seletores se acontecer.
+- Se o layout da aba Ofertas do Mercado Livre mudar (classes CSS `.poly-card`, `.poly-component__title`, etc.), o scraper (`ofertasScraperHttp.ts`) quebra silenciosamente (retorna 0 ofertas) — não é algo sob nosso controle, só ajustar os seletores se acontecer. Já aconteceu antes com o seletor de imagem da PDP (ver seção 2.11) — não é hipotético.
 - A listagem de produtos na API/UI tem limite de 1000 linhas (era 200, mas o volume aumentou muito com a captura por categoria).
 - **Sempre usar `TIMESTAMPTZ`** em qualquer coluna nova de data/hora — nunca `TIMESTAMP` puro. O host roda em UTC-3 e o Postgres em UTC; sem fuso na coluna, a leitura via `pg` fica ~3h errada (ver seção 1, "bug de fuso horário corrigido").
 - Canal com `categorias_permitidas` vazio/null aceita **só** produtos do nicho `"geral"` agora — antes aceitava qualquer nicho. Quem quer um canal "recebe de todos os nichos" precisa listar todos explicitamente (não dá pra expressar isso com o campo vazio).
-- O disparo automático roda a cada 1 min verificando TODOS os canais ativos, mas cada disparo individual demora ~30-40s (gerar o link de afiliado passa pelo Chrome/Playwright) — não é instantâneo mesmo quando "na hora".
+- O disparo automático roda a cada 1 min verificando TODOS os canais ativos. Cada disparo individual **era ~30-40s** enquanto o link passava pelo Chrome/Playwright — desde 2026-08-13 (HTTP puro, seção 2.11) é bem mais rápido (2 requests HTTP: buscar o token CSRF + criar o link), mas ainda não é zero (a geração do link + o envio da mídia levam um tempinho).
