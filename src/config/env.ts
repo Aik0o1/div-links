@@ -13,6 +13,10 @@ export const env = {
   redisUrl: process.env.REDIS_URL ?? "redis://localhost:6379",
   logLevel: process.env.LOG_LEVEL ?? "info",
   portaUi: Number(process.env.PORTA_UI ?? "3000"),
+  // Só usado pro `secure` do cookie de sessão (auth) — cookie `secure` exige
+  // HTTPS, que não existe em `npm run ui` local. Nunca setado manualmente
+  // hoje; existe pra quando o deploy real (SaaS) rodar atrás de HTTPS.
+  nodeEnv: process.env.NODE_ENV ?? "development",
   telegram: {
     botToken: process.env.TELEGRAM_BOT_TOKEN,
   },

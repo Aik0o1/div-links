@@ -1,6 +1,8 @@
 import express from "express";
+import cookieParser from "cookie-parser";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { rotaAuth } from "./rotas/auth.js";
 import { rotaStatus } from "./rotas/status.js";
 import { rotaNichos } from "./rotas/nichos.js";
 import { rotaConfiguracoes } from "./rotas/configuracoes.js";
@@ -35,7 +37,15 @@ const DIRETORIO_IMAGENS_CAPTURADAS = path.resolve(
 export function criarApp() {
   const app = express();
   app.use(express.json());
+  app.use(cookieParser());
 
+  app.use("/api/auth", rotaAuth);
+
+  // TODO(Fase 4 do plano multi-tenant): montar `exigirAutenticacao` aqui,
+  // antes das rotas abaixo, e escopar cada uma delas por `req.usuarioId`
+  // (hoje ainda leem/escrevem dado global, sem tenant — ver PROJECT_STATUS
+  // e o plano salvo). Até lá, as rotas de auth acima existem mas nada as
+  // usa de verdade — o painel continua igual, sem login.
   app.use("/api/status", rotaStatus);
   app.use("/api/nichos", rotaNichos);
   app.use("/api/configuracoes", rotaConfiguracoes);
