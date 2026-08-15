@@ -75,14 +75,26 @@ const REGEX_LINHA_CODIGO_CUPOM = /c[oó]digo.*cupo(?:m|ns)|cupo(?:m|ns).*c[oó]d
 // "Po+r" (não só "Por") — mesmo estilo de letra repetida pra ênfase já visto
 // em "CUPOMMM"/"INDICOOO" em outros posts reais, aqui vira "Poor" por
 // engano/estilo ("🔥Poor: 26,88") — sem isso, nenhum preço é reconhecido.
+//
+// `(?![A-Za-zÀ-ÿ])` logo depois do valor capturado (nas três regex abaixo):
+// bug real (2026-08-15) — "\bDe\b" bate na preposição "de" comum no meio de
+// qualquer frase (não só no rótulo de preço "De:"), e "sucção forte de
+// 16000Pa" tinha um número (a especificação de pressão do produto, "16000",
+// colado direto em "Pa") logo depois dessa palavra "de" — virou um "De:
+// R$16.000" fantasma, nunca escrito no post. Preço de verdade nunca vem
+// colado numa unidade/palavra sem espaço nenhum ("16000Pa", "500W",
+// "2kg") — exigir que NADA de letra venha grudada direto no valor descarta
+// esse tipo de falso positivo sem quebrar nenhum formato real documentado
+// acima (todos têm separador — "|", quebra de linha, "R$", etc. — entre o
+// valor e o que vem depois).
 const REGEX_PRECO_DE_POR =
-  /\bDe\b[^\d\n]{0,15}?([\d.,]+)[\s\S]{0,60}?\bPo+r\b[^\d\n]{0,20}?([\d.,]+)([^\n]*)/i;
-const REGEX_PRECO_POR = /\bPo+r\b[^\d\n]{0,20}?([\d.,]+)([^\n]*)/i;
+  /\bDe\b[^\d\n]{0,15}?([\d.,]+)(?![A-Za-zÀ-ÿ])[\s\S]{0,60}?\bPo+r\b[^\d\n]{0,20}?([\d.,]+)(?![A-Za-zÀ-ÿ])([^\n]*)/i;
+const REGEX_PRECO_POR = /\bPo+r\b[^\d\n]{0,20}?([\d.,]+)(?![A-Za-zÀ-ÿ])([^\n]*)/i;
 // Último recurso: linha com "R$<valor>" solto, sem "De"/"Por" nenhum (ex.:
 // "💵 R$ 77", "💵 R$ 645,21 no Pix") — formato real visto em post de grupo
 // monitorado. Só considera linha que NÃO menciona cupom, pra não confundir
 // com um valor de desconto tipo "cupom de R$40 OFF" (que também tem "R$").
-const REGEX_PRECO_SOLTO = /R\$\s*([\d.,]+)([^\n]*)/i;
+const REGEX_PRECO_SOLTO = /R\$\s*([\d.,]+)(?![A-Za-zÀ-ÿ])([^\n]*)/i;
 const REGEX_PIX = /pix/i;
 // "Por: R$136,44 (ou R$109,15 no pix!!!)" — formato real visto: o valor
 // logo depois de "Por" é o preço "normal" (cartão), e o de pix (mais barato)
