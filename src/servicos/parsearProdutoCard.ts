@@ -12,6 +12,23 @@ export interface PrecosExtraidos {
   noPix: boolean;
 }
 
+// "De:" mais de 10x o "Por:" (>90% de desconto implícito) é chute de
+// marketing pra inflar o desconto aparente, não preço real — nenhuma
+// promoção legítima de marketplace chega perto disso. Bug real
+// (2026-08-15): grupo monitorado postou "De: R$16.000,00 | Por: R$144,00"
+// pra um aspirador de pó portátil comum — o valor "De:" nunca existiu.
+// Mesmo espírito da correção do lado do Mercado Livre (2026-08-10, "De:
+// R$600" pra produto que nunca custou isso — ver capturarProdutoTerceiro.ts)
+// — lá dá pra confirmar contra a página real raspada; aqui (usado também
+// pela Shopee, que não dá pra raspar, ver capturarProdutoShopee.ts) só dá
+// pra aplicar um teste de plausibilidade. Descarta só o "De:" implausível
+// (produto ainda é capturado e disparado, só sem preço original/desconto
+// riscado) — nunca descarta o produto inteiro por causa disso.
+const RAZAO_MAXIMA_DESCONTO_PLAUSIVEL = 10;
+function precoOriginalPlausivel(precoOriginal: number, precoPromocional: number): boolean {
+  return precoOriginal <= precoPromocional * RAZAO_MAXIMA_DESCONTO_PLAUSIVEL;
+}
+
 const REGEX_URL = /(https?:\/\/[^\s]+)/g;
 // O formato da frase de cupom varia demais entre grupos ("cupom: X",
 // "cupons: X ou Y", "cupom de XX% OFF X no anúncio", e provavelmente outros
@@ -211,7 +228,12 @@ export function extrairPrecos(texto: string): PrecosExtraidos | null {
   const matchDePor = texto.match(REGEX_PRECO_DE_POR);
   if (matchDePor) {
     const { valor, noPix } = precoFinalDaLinhaPor(matchDePor[2], matchDePor[3]);
-    return { precoOriginal: paraNumero(matchDePor[1]), precoPromocional: valor, noPix };
+    const precoOriginal = paraNumero(matchDePor[1]);
+    return {
+      precoOriginal: precoOriginalPlausivel(precoOriginal, valor) ? precoOriginal : null,
+      precoPromocional: valor,
+      noPix,
+    };
   }
 
   const matchPor = texto.match(REGEX_PRECO_POR);
