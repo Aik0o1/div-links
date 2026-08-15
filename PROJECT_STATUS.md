@@ -2,13 +2,15 @@
 
 > Complementa o `PROJETO_AUTOMACAO_AFILIADOS.md` (especificação original). Este arquivo registra o que já foi construído, as decisões tomadas (e por quê) e o que falta, pra continuar o desenvolvimento em qualquer máquina/sessão.
 
-Última atualização: 2026-08-14.
+Última atualização: 2026-08-15.
 
 ---
 
 ## 1. O que já funciona (ponta a ponta)
 
-**Painel web** (`npm run ui`, porta configurável em `PORTA_UI`) de onde dá pra controlar tudo: nichos ativos, desconto mínimo, canais de destino, ver produtos capturados e disparar manualmente.
+> **Desde 2026-08-15 o sistema é multi-tenant com login/senha** (ver seção 2.12) — tudo abaixo nesta seção descreve o comportamento **por tenant** (cada conta tem os próprios nichos/canais/produtos/config, isolados). O painel inteiro fica atrás de autenticação; só `/api/auth/*` e o webhook do WhatsApp são públicos.
+
+**Painel web** (`npm run ui`, porta configurável em `PORTA_UI`) de onde dá pra controlar tudo: nichos ativos, desconto mínimo, canais de destino, ver produtos capturados e disparar manualmente. Exige login (email+senha) pra acessar qualquer coisa.
 
 Fluxo: **Capturar (busca, por categoria real do ML, as ofertas de cada nicho ativo — botão na UI ou API) → zera a tabela de produtos inteira e insere a nova leva do zero → produtos salvos no Postgres (deduplicados dentro da mesma leva) → usuário revisa e clica "Disparar" por produto/canal → gera link de afiliado real (`meli.la`) + legenda → envia foto+legenda pro Telegram ou WhatsApp (Evolution API, conforme `canal.tipo`) → registra em `disparos`.**
 
@@ -154,6 +156,32 @@ Motivado por dois problemas reais acumulados ao longo de agosto (várias sessõe
 - **UI redesenhada pra gente leiga** (pedido explícito do usuário, pensando num futuro SaaS com pessoas não-técnicas usando): o card "Chrome" da aba Config. Afiliados virou card "Mercado Livre", com um modal de "Conectar" em 2 passos numerados (tag com link direto pro painel de afiliados; cookie com passo a passo em linguagem simples, tipo abrir DevTools/Network, sem pressupor conhecimento técnico). O item de checklist do Dashboard que checava `chromeConectado()` também foi corrigido pra checar tag+cookie configurados — estava gerando um aviso falso ("abra o Chrome") mesmo com tudo certo.
 - **Bugs de seletor de imagem resolvidos no caminho** (afetam tanto a versão Chrome quanto a HTTP nova, já que reaproveita os seletores): o ML mudou a estrutura da galeria pra uma classe `ui-pdp-gallery--<orientação>` (`--horizontal`/`--vertical`/`--square`, variando por template de anúncio) que pode estar no `<img>` ou no `<div>` pai — seletor final cobre os dois casos. E `.ui-pdp-gallery__clip` (que uma correção anterior incluiu, achando ser variante de zoom) é na verdade a miniatura do **slide de vídeo** do carrossel — removido, causava produto saindo com imagem escura genérica.
 
+### 2.12 Multi-tenant + autenticação — de uso pessoal pra SaaS (2026-08-15)
+
+Motivado pela decisão de transformar o sistema (até então uso pessoal do Victor, painel 100% aberto, sem login) num SaaS: cada cliente conecta as **próprias** contas de ML/WhatsApp/Telegram, isoladas das dos outros. A eliminação do Chrome (seção 2.11, dia anterior) já tinha resolvido o maior risco de infraestrutura desse plano (não precisa de navegador remoto por cliente) — faltava só auth própria e threading de `usuario_id` por todo o sistema.
+
+- **Auth self-rolled, decisão explícita do usuário**: email+senha, sessão no Postgres — **não** Clerk/Auth0/Supabase Auth/JWT. Tabelas `usuarios` (bcrypt custo 12) e `sessoes` (token de 32 bytes aleatórios, cookie `httpOnly`/`sameSite=lax`/`secure` em produção, 30 dias, renovação por sliding window). **O banco guarda só `sha256(token)`, nunca o token bruto** — um dump do Postgres sozinho não dá pra sequestrar sessão. Rotas: `POST /api/auth/{signup,login,logout}`, `GET /api/auth/me`.
+- **Migração de schema em 3 passos (expand → backfill → contract), sem downtime**:
+  1. `022_usuario_id_expand.sql` — `usuario_id INTEGER REFERENCES usuarios(id)` **nullable** em `produtos`, `canais_destino`, `nichos`, `cupons_capturados`, `configuracoes`, `disparos`, `cupons_disparos`. Puramente aditivo.
+  2. `src/db/backfillContaInicial.ts` (script one-off, não migration numerada) — cria a conta do Victor (hoje `usuario_id = 2`) e faz `UPDATE ... SET usuario_id WHERE usuario_id IS NULL` nas 7 tabelas.
+  3. `024_usuario_id_contract.sql` — só depois de confirmar que TODO INSERT novo do código em produção já grava `usuario_id` (ou seja, só depois do restart rodando o código refatorado): `usuario_id` vira `NOT NULL` nas 7 tabelas; cai o `UNIQUE(hash_conteudo)` sozinho de `produtos`/`cupons_capturados` (dedup agora é só por tenant, dois tenants podem ter o mesmo produto real capturado); `nichos`/`configuracoes` trocam a PK single-column (`id`/`chave`) pela composta (`usuario_id, id`)/(`usuario_id, chave`).
+  - **Passo intermediário aditivo que não estava no plano original**: `023_indices_compostos_usuario_id.sql` criou os índices únicos compostos (`produtos_usuario_hash_idx` etc.) **antes** da 024, coexistindo com as constraints antigas — necessário porque o código novo (`ON CONFLICT (usuario_id, hash_conteudo)`) precisava de um índice que ainda não existia, mas a 024 (que dropa as constraints antigas) só podia rodar depois do código novo estar no ar. Sem esse passo intermediário não dava pra testar o código novo incrementalmente sem quebrar o antigo em produção.
+  - **43 linhas escaparam do backfill inicial** (32 `produtos` + 11 `disparos`) — inseridas na janela entre o merge do código de auth (que já criava as tabelas/colunas) e o restart efetivo rodando o código que passou a gravar `usuario_id` em todo INSERT. Detectado e corrigido com um segundo backfill manual antes de rodar a 024 (senão o `ALTER COLUMN ... SET NOT NULL` teria falhado).
+- **Refatoração mecânica em ~30 arquivos**: toda função de repositório/serviço que toca tabela com `usuario_id` ganhou `usuarioId: number` como **primeiro parâmetro**; toda rota passa `req.usuarioId` (populado pelo middleware `exigirAutenticacao`, `src/servidor/middleware/autenticacao.ts`). **Todo `buscarPorId`/`atualizar`/`remover` filtra `WHERE id = $1 AND usuario_id = $2`, nunca só `id`** — os IDs são `SERIAL` sequenciais e previsíveis, sem esse filtro seria um IDOR trivial (tenant A adivinha/incrementa ID e lê/edita dado do tenant B).
+- **Singletons de processo viraram por tenant**:
+  - **Evolution API (WhatsApp)**: nome de instância passou de fixo (`EVOLUTION_INSTANCE=divulga-links` no `.env`) pra **determinístico por tenant**, `tenant-${usuarioId}` (`nomeInstanciaEvolution`, `instancia.ts`) — sem precisar de coluna nova. Container/URL/API key da Evolution continuam globais (é o mesmo container self-hosted compartilhado, só a instância dentro dele é isolada por tenant). `configurarWebhook()` parou de rodar uma vez fixo em `iniciar.ts` — agora roda dentro do fluxo de criar a instância (`obterQrCode`), por tenant.
+  - **Telegram listener (MTProto, conta pessoal)**: `telegramListener/cliente.ts` trocou o singleton de módulo (`let cliente`) por `Map<usuarioId, TelegramClient>` — cada tenant loga com a própria conta.
+  - **Bot de envio do Telegram** (`integracoes/telegram/bot.ts`, `TELEGRAM_BOT_TOKEN`) **continua global de propósito** — é um bot de plataforma compartilhado entre tenants (cada um adiciona o mesmo bot no próprio canal/grupo de destino), diferente do WhatsApp (cada tenant conecta o próprio número) e do listener MTProto (cada tenant loga a própria conta pessoal).
+  - **Cache Redis de link de afiliado**: chave passou de `link_afiliado:{plataforma}:{url}` pra `link_afiliado:{usuarioId}:{plataforma}:{url}`.
+- **Bug de vazamento de credencial corrigido**: `shopee/config.ts` tinha um fallback pro `.env` (`SHOPEE_APP_ID`/`SHOPEE_SECRET`) quando o banco não tinha config — em multi-tenant isso vazaria a comissão/credencial do Victor pra qualquer tenant sem config própria. **Fallback removido**; `SHOPEE_APP_ID`/`SHOPEE_SECRET` saíram do `.env`/`.env.example` de vez.
+- **Bug real no deploy, corrigido na hora**: o middleware `exigirAutenticacao` foi montado em `app.ts` **antes** de `express.static(...)` — bloqueava com 401 até o próprio `index.html`/JS/CSS do painel, o que significa que **ninguém conseguia nem ver a tela de login**. Corrigido movendo os estáticos pra antes do middleware (o guard de verdade é client-side, `useSessao`/`App.tsx` — o servidor só precisa proteger as rotas `/api/*` que carregam dado de tenant).
+- **Cuidado operacional descoberto testando**: `npm run build:frontend` escreve direto em `src/servidor/public/` — o **mesmo diretório estático servido pelo processo de produção já rodando**. Rodar esse build enquanto o processo ao vivo está de pé troca a UI na hora, sem reiniciar nada (Express lê do disco a cada request, sem cache em memória). Testar frontend em paralelo com produção rodando precisa usar `vite dev` (porta separada) ou aceitar que o build vai republicar pro processo ao vivo — nunca rodar `build:frontend` só "pra testar" sem essa consciência.
+- **Consequência operacional do WhatsApp**: como o nome da instância mudou de fixo pra `tenant-{id}`, a sessão antiga (`divulga-links`) não migra sozinha — precisa reconectar (escanear QR de novo) na aba Config. WhatsApp depois do deploy. Telegram (bot e listener) e cookie do ML não têm esse problema, são só valores de config relidos com `usuarioId` novo, sem troca de identidade externa.
+- **Webhook do WhatsApp resolve o tenant sem consultar o banco**: como o nome da instância é determinístico, o handler (`handlerWebhookWhatsapp`, extraído do router `rotaWhatsapp` pra ficar registrado **antes** do middleware de auth em `app.ts` — é a Evolution chamando, sem cookie de sessão) casa `corpo.instance` contra `/^tenant-(\d+)$/` via regex.
+- **Frontend**: `paginas/Login.tsx`/`Signup.tsx` (mesmo estilo visual do resto do painel), `lib/auth.ts` (`useSessao()` — checa `/api/auth/me` no mount, escuta um evento global de 401 disparado por `lib/api.ts` pra deslogar em qualquer chamada que volte "não autenticado", não só na checagem inicial), `App.tsx` virou um guard simples (sem router, mesmo padrão de `useState` já usado pras abas), botão de logout na `Sidebar`.
+- **Fora de escopo desta fase** (registrado no plano original, ainda válido): billing/Stripe, recuperação de senha por email (sem SMTP hoje), verificação de email no signup, rate limiting/proteção brute-force no login, criptografia at-rest do cookie do ML/sessão do Telegram (ficam em texto puro no Postgres), RBAC/múltiplos usuários por conta, paralelismo real entre tenants no disparo automático (roda sequencial por simplicidade — não é mais limitação técnica desde que o Chrome saiu da equação, mas não foi paralelizado ainda), limpeza automática de instância Evolution órfã se um tenant for deletado, deploy num servidor real (hoje ainda roda só na máquina do Victor).
+- Testado ponta a ponta em produção depois do deploy: login com a conta do Victor, `/api/produtos`/`/api/nichos`/`/api/configuracoes`/`/api/dashboard/metricas` respondendo com os dados migrados corretos, `INSERT` sem `usuario_id` falhando de propósito (constraint pegou), WhatsApp reconectado e disparo automático rodando de novo.
+
 ---
 
 ## 3. Arquitetura / arquivos
@@ -161,9 +189,9 @@ Motivado por dois problemas reais acumulados ao longo de agosto (várias sessõe
 ```
 src/
   config/         env.ts (segredos/infra), logger.ts, redis.ts
-  db/             pool.ts, migrate.ts (runner próprio), migrations/*.sql
+  db/             pool.ts, migrate.ts (runner próprio), migrations/*.sql, backfillContaInicial.ts (one-off, ver seção 2.12)
   queues/         index.ts (BullMQ — infra pronta, não usada pelo fluxo atual da UI)
-  types/          produto.ts (ProdutoBruto, FonteDeProdutos)
+  types/          produto.ts (ProdutoBruto, FonteDeProdutos), express.d.ts (Request.usuarioId)
   integracoes/
     mercadoLivre/
       meliHttp.ts                    fetch autenticado via cookie de sessão salvo no banco — buscarPaginaMeli (GET+HTML), criarLinkOficial (POST no createLink real, com token CSRF extraído do HTML). Base de tudo abaixo, ver seção 2.11
@@ -182,28 +210,30 @@ src/
       cliente.ts                    MTProto (GramJS) — login em etapas, sessão no Postgres, listarDialogos, verificarNovasMensagens (polling, ver seção 2.10)
     ollama/
       gerarChamada.ts                gerarChamada(tituloProduto) — chama o Ollama local
-  linkAfiliado/    tipos.ts, cache.ts (comCache), linkMercadoLivre.ts, index.ts
+  linkAfiliado/    tipos.ts, cache.ts (comCache, chave por tenant), linkMercadoLivre.ts, index.ts — gerar(usuarioId, urlProduto)
   legenda/         gerarLegenda.ts
   assets/imgs/     MLimg.jpeg — banner fixo usado nos cupons repassados do Telegram
-  repositorios/    nichos.ts, configuracoes.ts, canais.ts, produtos.ts, disparos.ts, cupons.ts — acesso direto ao Postgres
-  servicos/        capturarProdutos.ts, dispararProduto.ts (canaisElegiveis, proximoProdutoElegivel, dispararParaCanal), repassarCupons.ts, parsearCupons.ts, parsearProdutoCard.ts, capturarProdutoTerceiro.ts, processarMensagemGrupo.ts (orquestrador: decide cupom vs produto) — lógica de negócio
+  repositorios/    usuarios.ts, sessoes.ts (auth, ver seção 2.12), nichos.ts, configuracoes.ts, canais.ts, produtos.ts, disparos.ts, cupons.ts — acesso direto ao Postgres, toda função com usuarioId como 1º parâmetro
+  servicos/        seedNichosPadrao.ts (roda no signup, ver 2.12), capturarProdutos.ts, dispararProduto.ts (canaisElegiveis, proximoProdutoElegivel, dispararParaCanal), repassarCupons.ts, parsearCupons.ts, parsearProdutoCard.ts, capturarProdutoTerceiro.ts, processarMensagemGrupo.ts (orquestrador: decide cupom vs produto) — lógica de negócio
   servidor/
-    app.ts               Express app (monta /api/* + estático)
-    iniciar.ts           entrypoint (npm run ui) — sobe o Express, o agendador de disparo, o agendador do monitor de Telegram e configura o webhook da Evolution API (WhatsApp)
-    agendadorDisparo.ts  roda em loop (1x/min): por canal ativo, confere intervalo e dispara sozinho se tiver produto elegível
-    agendadorMonitorTelegram.ts  roda em loop (45s): verificarNovasMensagens em todo grupo monitorado do Telegram (polling — ver seção 2.10)
-    rotas/          status.ts, nichos.ts, configuracoes.ts, canais.ts, produtos.ts, disparoAutomatico.ts, whatsapp.ts, telegramListener.ts
-    public/         build gerado pelo Vite (npm run build:frontend) — index.html + assets/, não editar direto
+    app.ts               Express app (auth pública em /api/auth + webhook do WhatsApp, resto atrás de exigirAutenticacao, depois /api/* + estático)
+    iniciar.ts           entrypoint (npm run ui) — sobe o Express, o agendador de disparo, o agendador do monitor de Telegram
+    middleware/
+      autenticacao.ts    exigirAutenticacao (popula req.usuarioId a partir do cookie de sessão), hashToken, opcoesCookieSessao
+    agendadorDisparo.ts  roda em loop (1x/min): itera usuariosRepo.listarAtivos(), por tenant/canal ativo confere intervalo e dispara sozinho se tiver produto elegível (try/catch por tenant — falha de um não trava os outros)
+    agendadorMonitorTelegram.ts  roda em loop (45s): verificarNovasMensagens por tenant ativo (Set<usuarioId> de guard, não mais um boolean só — tenants diferentes podem rodar em paralelo)
+    rotas/          auth.ts (signup/login/logout/me), status.ts, nichos.ts, configuracoes.ts, canais.ts, produtos.ts, disparoAutomatico.ts, whatsapp.ts (+ handlerWebhookWhatsapp, público), telegramListener.ts, dashboard.ts, cupons.ts
+    public/         build gerado pelo Vite (npm run build:frontend) — index.html + assets/, não editar direto. CUIDADO: é servido em produção direto do disco, ver seção 2.12 sobre rodar esse build com o processo ao vivo de pé
   cli/
-    capturar.ts     equivalente de terminal do botão "Capturar agora" (npm run capturar)
+    capturar.ts     equivalente de terminal do botão "Capturar agora" (npm run capturar -- <usuarioId>, ver seção 2.12)
 
-frontend/src/       React + Vite + Tailwind (não é mais "frontend puro sem framework" — reescrito em algum
-                    ponto não documentado aqui, achado só ao atualizar esse arquivo em 2026-08-14). App.tsx
-                    (abas via estado, sem router), paginas/*.tsx (uma por aba), components/ui/* (primitivos
-                    tipo shadcn: button, dialog, input, textarea, switch, tabs...)
+frontend/src/       React + Vite + Tailwind. App.tsx (guard de sessão + abas via estado, sem router),
+                    paginas/Login.tsx, Signup.tsx (novos, ver 2.12), paginas/*.tsx (uma por aba do painel),
+                    lib/auth.ts (useSessao), lib/api.ts (fetch wrapper + evento global de 401),
+                    components/ui/* (primitivos tipo shadcn: button, dialog, input, textarea, switch, tabs...)
 ```
 
-Tabelas no Postgres: `produtos` (+ coluna `nicho`), `canais_destino`, `disparos`, `nichos`, `configuracoes`, `cupons_capturados`, `cupons_disparos`, `schema_migrations`. `oauth_tokens` **removida** (migration `014`, ver seção 2.1).
+Tabelas no Postgres: `usuarios`, `sessoes` (auth, ver seção 2.12), `produtos` (+ coluna `nicho`), `canais_destino`, `disparos`, `nichos`, `configuracoes`, `cupons_capturados`, `cupons_disparos`, `schema_migrations`. `oauth_tokens` **removida** (migration `014`, ver seção 2.1). As 7 tabelas de dado de tenant (tudo exceto `usuarios`/`sessoes`/`schema_migrations`) têm `usuario_id NOT NULL` desde a migration `024` (ver seção 2.12).
 
 ---
 
@@ -212,9 +242,11 @@ Tabelas no Postgres: `produtos` (+ coluna `nicho`), `canais_destino`, `disparos`
 ```bash
 npm install
 docker compose up -d          # Postgres + Redis + Evolution API
-npm run migrate               # cria schema + seed de nichos/config/1 canal
+npm run migrate               # cria schema (inclusive usuarios/sessoes)
 npm run ui                    # sobe o painel em http://localhost:$PORTA_UI
 ```
+
+Depois, acesse o painel e crie uma conta pela tela de cadastro (email+senha) — desde 2026-08-15 o sistema exige login (ver seção 2.12); o signup já semeia os 8 nichos padrão sozinho (`seedNichosPadrao`), não precisa rodar nada manual. Não existe mais uma migration que já vem com dado seedado pronto (nichos/config/canal eram seedados globalmente antes do multi-tenant) — cada conta nova começa vazia (exceto os nichos padrão) e configura o resto (canais, Shopee/ML/WhatsApp/Telegram) pela própria UI.
 
 Não precisa mais de `npx playwright install chromium` nem de Chrome instalado — desde 2026-08-13 nada no fluxo ativo abre navegador (ver seção 2.11). `playwright` continua como dependência no `package.json` só porque os arquivos antigos (sem uso) ainda importam ele.
 
@@ -226,20 +258,21 @@ Copie o `.env` da máquina antiga **por fora do git** (nunca vai pro repositóri
 
 | Variável | O que é |
 |---|---|
-| `DATABASE_URL`, `REDIS_URL`, `LOG_LEVEL`, `PORTA_UI` | Infra local |
-| `TELEGRAM_BOT_TOKEN` | Bot via @BotFather |
-| `EVOLUTION_API_KEY` | Gerada por você (ex.: `openssl rand -hex 16`) — precisa ser o **mesmo valor** em `AUTHENTICATION_API_KEY` no `docker-compose.yml` (já referenciado via `${EVOLUTION_API_KEY}`, não precisa editar o compose) |
-| `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` | Credenciais de app em [my.telegram.org](https://my.telegram.org) (login com o número que vai monitorar o grupo, "API development tools", cria um app qualquer) — usadas pelo monitor de cupons (MTProto/GramJS), não confundir com `TELEGRAM_BOT_TOKEN` |
-| `SHOPEE_APP_ID`, `SHOPEE_SECRET` | Fallback opcional — hoje configurável pela UI (aba Config. Afiliados), guardado no banco. `.env` só é lido se o banco não tiver nada salvo |
+| `DATABASE_URL`, `REDIS_URL`, `LOG_LEVEL`, `PORTA_UI`, `NODE_ENV` | Infra local (`NODE_ENV` só controla o `secure` do cookie de sessão — nunca setado manualmente hoje, é pra quando o deploy rodar atrás de HTTPS) |
+| `TELEGRAM_BOT_TOKEN` | Bot via @BotFather — **global, compartilhado entre todos os tenants** (ver seção 2.12), não é por conta |
+| `EVOLUTION_API_KEY` | Gerada por você (ex.: `openssl rand -hex 16`) — precisa ser o **mesmo valor** em `AUTHENTICATION_API_KEY` no `docker-compose.yml` (já referenciado via `${EVOLUTION_API_KEY}`, não precisa editar o compose). Não existe mais `EVOLUTION_INSTANCE` — o nome da instância é `tenant-{usuarioId}`, calculado no código (ver seção 2.12) |
+| `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` | Credenciais de app em [my.telegram.org](https://my.telegram.org) (login com o número que vai monitorar o grupo, "API development tools", cria um app qualquer) — usadas pelo monitor de cupons (MTProto/GramJS), não confundir com `TELEGRAM_BOT_TOKEN`. Cada tenant loga a própria conta pela UI, essas variáveis só precisam existir uma vez (credencial de *app*, não de conta) |
+
+`SHOPEE_APP_ID`/`SHOPEE_SECRET` **não existem mais no `.env`** — só pela UI (aba Config. Afiliados), por tenant, sem fallback (removido em 2026-08-15, ver seção 2.12 — era um vazamento de credencial entre tenants).
 
 `MELI_CLIENT_ID`/`MELI_CLIENT_SECRET`/`MELI_REDIRECT_URI`/`MELI_SITE_ID` (OAuth do ML) **não existem mais** — removidos junto com a tabela `oauth_tokens` (seção 2.1). Tag e cookie de sessão do Mercado Livre também **não ficam no `.env`** — só pela UI (aba Config. Afiliados → card "Mercado Livre" → "Conectar"), guardados no banco (`configuracoes.meli_afiliado_config` e `.meli_session_cookie`).
 
-Nichos, desconto mínimo e canais de destino **também não estão no `.env`** — vêm do banco (seedados pela migration `003_ui.sql`) e são editáveis na UI.
+Nichos, desconto mínimo e canais de destino **também não estão no `.env`** — vêm do banco e são editáveis na UI. Nichos não vêm mais de uma migration com seed fixo: cada conta nova recebe os 8 nichos padrão automaticamente no signup (`seedNichosPadrao`, ver seção 2.12), editável dali em diante.
 
 ### O que NÃO transfere automaticamente (precisa refazer na máquina nova):
 
 1. **Tag + cookie de sessão do Mercado Livre** (tabela `configuracoes`, fica no banco — migra junto se você copiar o volume `divulga_pg_data`; se não copiar, reconecte pela aba Config. Afiliados → "Conectar", o próprio painel explica o passo a passo). O cookie expira periodicamente de qualquer forma, independente de migração — ver seção 2.11.
-2. **Sessão do WhatsApp** (volume Docker `evolution_instances` + Postgres `evolution-postgres`) — não migra sozinha pra máquina nova (a menos que você copie os volumes Docker junto). Se não copiar: aba Status → "Conectar" → escanear o QR de novo com o celular.
+2. **Sessão do WhatsApp** (volume Docker `evolution_instances` + Postgres `evolution-postgres`) — não migra sozinha pra máquina nova (a menos que você copie os volumes Docker junto). Se não copiar: aba Config. WhatsApp → "Conectar" → escanear o QR de novo com o celular. O nome da instância é `tenant-{usuarioId}` (ver seção 2.12) — se o `usuario_id` da conta mudar (ex.: recriar a conta do zero em vez de restaurar o banco), conta como instância nova mesmo copiando os volumes.
 3. **Sessão do monitor de Telegram** (fica no Postgres principal, tabela `configuracoes` — migra junto se você copiar o volume `divulga_pg_data`; se não copiar, só logar de novo pela aba Status → "Conectar", telefone → código → senha se tiver 2FA).
 
 ---
@@ -250,7 +283,7 @@ Nichos, desconto mínimo e canais de destino **também não estão no `.env`** �
 npm run docker:up / docker:down     # sobe/derruba Postgres+Redis+Evolution API
 npm run migrate                      # aplica migrations pendentes
 npm run ui                           # sobe o painel web (Express + build do Vite)
-npm run capturar                     # equivalente de terminal do botão "Capturar agora"
+npm run capturar -- <usuarioId>      # equivalente de terminal do botão "Capturar agora", agora exige o id do tenant (ou CAPTURAR_USUARIO_ID=<id> npm run capturar)
 ```
 
 Atenção: a porta padrão do painel (`PORTA_UI`) é **3400**, não 3000 — nessa máquina de desenvolvimento a 3000 já estava ocupada por um processo Python não relacionado ao projeto.
@@ -259,13 +292,24 @@ Atenção: a porta padrão do painel (`PORTA_UI`) é **3400**, não 3000 — nes
 
 ## 6. Próximos passos (roadmap original, seção 5)
 
-Já feito: Fundação (1), Captura Mercado Livre (2), Link de afiliado (3), "Geração de arte" → virou Geração de Legenda (4), Bot do Telegram + MVP ponta a ponta (5), Motor de Regras básico (6, via canais_destino + UI), Deduplicação (3.3), Painel web cobrindo tudo isso, Integração com WhatsApp via Evolution API (8, envio pra grupos próprios — ver seção 2.5), **7. Escuta de grupos de terceiros — Telegram (MTProto, seções 2.7/2.8) e WhatsApp (webhook Evolution API, seção 2.9), cupons e produtos individuais nos dois**.
+Já feito: Fundação (1), Captura Mercado Livre (2), Link de afiliado (3), "Geração de arte" → virou Geração de Legenda (4), Bot do Telegram + MVP ponta a ponta (5), Motor de Regras básico (6, via canais_destino + UI), Deduplicação (3.3), Painel web cobrindo tudo isso, Integração com WhatsApp via Evolution API (8, envio pra grupos próprios — ver seção 2.5), **7. Escuta de grupos de terceiros — Telegram (MTProto, seções 2.7/2.8) e WhatsApp (webhook Evolution API, seção 2.9), cupons e produtos individuais nos dois**, **transformação multi-tenant + autenticação própria (seção 2.12)**.
 
 Ainda não feito, na ordem do documento original:
 - O Parser/Normalização com LLM (seção 3.2 do doc original) continua sem uso — o monitor de cupons extrai código/desconto/mínimo com **regex simples** (`parsearCupons.ts`), não precisou de LLM porque o formato dos grupos monitorados é consistente o bastante.
-- **Shopee** — **retomado e em uso** (credenciais aprovadas em algum momento não documentado aqui — achado só ao atualizar esse arquivo em 2026-08-14, já tinha `capturarProdutoShopee.ts`/`capturarProdutosShopee.ts` funcionando, canal dedicado "teste shopee" recebendo produtos de grupo monitorado e captura em massa). App ID/Secret configuráveis pela UI (aba Config. Afiliados), com fallback pro `.env` se o banco não tiver nada salvo.
+- **Shopee** — **retomado e em uso** (credenciais aprovadas em algum momento não documentado aqui — achado só ao atualizar esse arquivo em 2026-08-14, já tinha `capturarProdutoShopee.ts`/`capturarProdutosShopee.ts` funcionando, canal dedicado "teste shopee" recebendo produtos de grupo monitorado e captura em massa). App ID/Secret configuráveis pela UI (aba Config. Afiliados), **por tenant, sem fallback** pro `.env` (removido em 2026-08-15, ver seção 2.12).
 - **Observabilidade** — só logs via pino hoje, sem métricas.
 - **Captura agendada/automática** (diferente de disparo automático, que já existe — ver seção 1) — chegou a ser implementada (agendador em processo, configurável) mas foi **explicitamente revertida a pedido do usuário**: captura continua só manual (botão/API). Não reintroduzir sem pedido explícito. O **disparo**, por outro lado, roda automaticamente sozinho (`agendadorDisparo.ts`) — não confundir os dois.
+
+### 6.1 Pro sistema virar um SaaS vendável de verdade (fora de escopo da seção 2.12, ainda não feito)
+
+- **Cobrança** — sem Stripe/pagamento nenhum, não dá pra cobrar ninguém ainda.
+- **Recuperação de senha** — não existe (precisa de SMTP configurado, que não existe hoje). Esquecer a senha = ficar travado, sem caminho de recuperação.
+- **Confirmação de email** no cadastro — não existe, qualquer email é aceito sem verificar.
+- **Rate limiting / proteção brute-force no login** — sem limite de tentativas.
+- **Criptografia em repouso** do cookie de sessão do ML e da sessão do Telegram (`configuracoes.meli_session_cookie`/`telegram_listener_sessao`) — hoje ficam em texto puro no Postgres.
+- **RBAC / múltiplos usuários por conta** — hoje é 1 conta = 1 usuário, sem times/permissões.
+- **Limpeza automática de instância Evolution órfã** — deletar uma conta não libera a instância WhatsApp correspondente no Evolution API.
+- **Deploy real** — hoje tudo roda na máquina do Victor (`npm run ui` local + `docker compose` local). Precisa de servidor real, domínio, HTTPS pra outras pessoas usarem de verdade.
 
 ---
 
@@ -282,3 +326,7 @@ Ainda não feito, na ordem do documento original:
 - **Sempre usar `TIMESTAMPTZ`** em qualquer coluna nova de data/hora — nunca `TIMESTAMP` puro. O host roda em UTC-3 e o Postgres em UTC; sem fuso na coluna, a leitura via `pg` fica ~3h errada (ver seção 1, "bug de fuso horário corrigido").
 - Canal com `categorias_permitidas` vazio/null aceita **só** produtos do nicho `"geral"` agora — antes aceitava qualquer nicho. Quem quer um canal "recebe de todos os nichos" precisa listar todos explicitamente (não dá pra expressar isso com o campo vazio).
 - O disparo automático roda a cada 1 min verificando TODOS os canais ativos. Cada disparo individual **era ~30-40s** enquanto o link passava pelo Chrome/Playwright — desde 2026-08-13 (HTTP puro, seção 2.11) é bem mais rápido (2 requests HTTP: buscar o token CSRF + criar o link), mas ainda não é zero (a geração do link + o envio da mídia levam um tempinho).
+- **`npm run build:frontend` escreve direto em `src/servidor/public/`** — se um processo de produção já está rodando, esse build muda a UI dele NA HORA (Express serve estático direto do disco, sem cache). Nunca rodar isso "só pra testar" com produção de pé sem essa consciência — ver seção 2.12.
+- **Toda função de repositório/serviço que toca tabela de tenant leva `usuarioId` como primeiro parâmetro**, e todo `buscarPorId`/`atualizar`/`remover` filtra por `usuario_id` junto do `id` — nunca adicionar uma função nova que aceite só `id` sem `usuarioId` (abre brecha de IDOR entre tenants, ver seção 2.12). Rotas pegam `req.usuarioId` do middleware `exigirAutenticacao`, nunca do `body`/`query`.
+- Nome de instância do WhatsApp na Evolution API é `tenant-{usuarioId}`, calculado em `nomeInstanciaEvolution()` (`instancia.ts`) — nunca fixo/hardcoded de novo.
+- O bot de ENVIO do Telegram (`TELEGRAM_BOT_TOKEN`) é global, compartilhado entre tenants — não confundir com o listener MTProto (`TELEGRAM_API_ID`/`TELEGRAM_API_HASH`), que é por tenant (cada um loga a própria conta pessoal).
