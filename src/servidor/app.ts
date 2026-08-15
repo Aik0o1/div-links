@@ -50,6 +50,19 @@ export function criarApp() {
   // determinístico `tenant-{usuarioId}`), não via `req.usuarioId`.
   app.post("/api/whatsapp/webhook", handlerWebhookWhatsapp);
 
+  // Estáticos ficam ANTES do middleware de auth de propósito — o próprio
+  // index.html/JS/CSS do painel (a SPA que MOSTRA a tela de login) não pode
+  // exigir uma sessão já válida pra carregar, senão ninguém consegue nem
+  // ver o formulário de login (bug real: 401 na raiz "/" logo depois desse
+  // middleware ter sido ligado, pego antes de qualquer usuário externo
+  // acessar). O guard de verdade é client-side (useSessao/App.tsx) — o
+  // servidor só protege as rotas /api/* que carregam dado de tenant.
+  // /imagens-capturadas já era público antes do multi-tenant (nome de
+  // arquivo não tem usuario_id, mas a imagem em si vai ser postada
+  // publicamente no WhatsApp/Telegram de qualquer forma).
+  app.use("/imagens-capturadas", express.static(DIRETORIO_IMAGENS_CAPTURADAS));
+  app.use(express.static(DIRETORIO_PUBLIC));
+
   app.use(exigirAutenticacao);
 
   app.use("/api/status", rotaStatus);
@@ -62,9 +75,6 @@ export function criarApp() {
   app.use("/api/whatsapp", rotaWhatsapp);
   app.use("/api/telegram-listener", rotaTelegramListener);
   app.use("/api/dashboard", rotaDashboard);
-
-  app.use("/imagens-capturadas", express.static(DIRETORIO_IMAGENS_CAPTURADAS));
-  app.use(express.static(DIRETORIO_PUBLIC));
 
   return app;
 }
