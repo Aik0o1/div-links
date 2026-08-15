@@ -6,6 +6,7 @@ import * as sessoesRepo from "../../repositorios/sessoes.js";
 import { seedNichosPadrao } from "../../servicos/seedNichosPadrao.js";
 import { logger } from "../../config/logger.js";
 import { NOME_COOKIE_SESSAO, opcoesCookieSessao, exigirAutenticacao, hashToken } from "../middleware/autenticacao.js";
+import { limiteLogin, limiteSignup } from "../middleware/rateLimit.js";
 
 export const rotaAuth = Router();
 
@@ -28,7 +29,7 @@ async function criarSessaoECookie(res: import("express").Response, usuarioId: nu
   res.cookie(NOME_COOKIE_SESSAO, token, opcoesCookieSessao);
 }
 
-rotaAuth.post("/signup", async (req, res) => {
+rotaAuth.post("/signup", limiteSignup, async (req, res) => {
   const { email, senha, nome } = req.body;
   if (typeof email !== "string" || !email.includes("@")) {
     res.status(400).json({ erro: "email inválido" });
@@ -58,7 +59,7 @@ rotaAuth.post("/signup", async (req, res) => {
   }
 });
 
-rotaAuth.post("/login", async (req, res) => {
+rotaAuth.post("/login", limiteLogin, async (req, res) => {
   const { email, senha } = req.body;
   if (typeof email !== "string" || typeof senha !== "string") {
     res.status(400).json({ erro: ERRO_LOGIN_GENERICO });
