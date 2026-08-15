@@ -93,6 +93,24 @@ const REGEX_FORMATO_B_PERCENTUAL_LIMITADO = /(\d{1,3})\s*%\s*OFF\s*limitado\s*a\
 const REGEX_HEADER_PERCENTUAL_COMPARTILHADO = /CUPOM\s+DE\s+(\d{1,3})\s*%\s*OFF/i;
 const REGEX_CODIGO_APOS_SETA = /🎟️?\s*👉\s*([A-Z0-9]{3,20})/;
 
+// Formato E — código sozinho numa linha logo depois do 🎟️ (sem "cupom:",
+// sem seta 👉), desconto na(s) linha(s) seguinte(s) em "R$X OFF compras
+// acima de R$Y" ou "XX% OFF compras acima de R$Y [limitado R$Z]", **cada
+// cupom com o PRÓPRIO link** ("✨ Use aqui: ...", ignorado aqui — o modelo
+// atual só suporta um link por mensagem inteira, ver formatarLegendaCupons/
+// dispararCupomPendente, sempre o link fixo configurado). Bug real
+// (2026-08-15): mensagem nesse formato não batia em NENHUM formato
+// existente (sem 👉, sem "cupom:", discrição de desconto não começa com
+// 🎟️ como o D exige) — extrairCupons voltava vazio, a mensagem caía no
+// fluxo de CARD DE PRODUTO por engano, e o fallback de perfil social
+// (buscarProdutoEmPerfilSocial) casou por coincidência de palavra com um
+// produto TOTALMENTE diferente do link real, disparando produto errado
+// (preço, título e link nada a ver com a promoção real do post).
+const REGEX_TICKET_CODIGO_ISOLADO = /^🎟️?\s*([A-Z][A-Z0-9]{2,19})\s*$/;
+const REGEX_FORMATO_E_VALOR_FIXO = /R\$\s*([\d.,]+)\s*OFF(?:.*?acima\s*de\s*R\$\s*([\d.,]+))?/i;
+const REGEX_FORMATO_E_PERCENTUAL =
+  /(\d{1,3})\s*%\s*OFF(?:.*?acima\s*de\s*R\$\s*([\d.,]+))?(?:.*?limitado\s*(?:a\s*)?R\$\s*([\d.,]+))?/i;
+
 // Formato D — comum na Shopee: várias faixas de desconto SEM código nenhum
 // pra digitar, um único link no fim já resgata o lote inteiro de uma vez
 // ("Resgate os cupons aqui" + 1 link). Cada linha começando com 🎟️ que
@@ -101,7 +119,7 @@ const REGEX_CODIGO_APOS_SETA = /🎟️?\s*👉\s*([A-Z0-9]{3,20})/;
 // vira um item — mantém a descrição como veio, sem decompor em
 // percentual/mínimo estruturados (o texto varia demais: "limitado a R$20
 // FULL", "acima de R$99" etc.). Só entra se nenhum dos formatos com código
-// (A/B/C) achou nada nessa mensagem.
+// (A/B/C/E) achou nada nessa mensagem.
 const REGEX_TICKET_PREFIXO = /^🎟️?\s*(.+)$/;
 function pareceDescricaoDeDesconto(texto: string): boolean {
   return /OFF/i.test(texto) && (texto.includes("%") || /R\$/i.test(texto));
@@ -208,6 +226,46 @@ export function extrairCupons(texto: string): CupomExtraido[] {
       // Se não achou linha de desconto nas próximas linhas, não é um cupom
       // de lista de verdade (provavelmente é o cupom de um card de produto
       // único, ver parsearProdutoCard.ts) — não adiciona nada.
+      continue;
+    }
+
+    const matchCodigoE = linhas[i].match(REGEX_TICKET_CODIGO_ISOLADO);
+    if (matchCodigoE) {
+      const codigo = matchCodigoE[1];
+      if (!codigosVistos.has(codigo)) {
+        for (let j = i + 1; j < Math.min(i + 4, linhas.length); j++) {
+          if (REGEX_TICKET_CODIGO_ISOLADO.test(linhas[j])) break; // já entrou no próximo cupom
+
+          const matchValorFixo = linhas[j].match(REGEX_FORMATO_E_VALOR_FIXO);
+          if (matchValorFixo) {
+            resultado.push({
+              codigo,
+              percentual: null,
+              valorFixo: paraNumero(matchValorFixo[1]),
+              minimo: matchValorFixo[2] ? paraNumero(matchValorFixo[2]) : null,
+              limiteDesconto: null,
+            });
+            codigosVistos.add(codigo);
+            break;
+          }
+          const matchPercentual = linhas[j].match(REGEX_FORMATO_E_PERCENTUAL);
+          if (matchPercentual) {
+            resultado.push({
+              codigo,
+              percentual: Number(matchPercentual[1]),
+              valorFixo: null,
+              minimo: matchPercentual[2] ? paraNumero(matchPercentual[2]) : null,
+              limiteDesconto: matchPercentual[3] ? paraNumero(matchPercentual[3]) : null,
+            });
+            codigosVistos.add(codigo);
+            break;
+          }
+        }
+      }
+      // Código isolado sem nenhuma linha de desconto reconhecível logo
+      // depois não é um cupom de lista válido — não adiciona nada, mas
+      // ainda assim não cai no Formato D (evita reclassificar como "sem
+      // código" um código que só não teve o desconto reconhecido).
       continue;
     }
 
