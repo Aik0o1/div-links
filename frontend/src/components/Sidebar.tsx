@@ -7,10 +7,12 @@ import {
   Satellite,
   Package,
   Ticket,
+  LogOut,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Aba } from "@/App";
+import type { UsuarioSessao } from "@/lib/auth";
 
 const ITENS: { aba: Aba; label: string; Icon: LucideIcon }[] = [
   { aba: "dashboard", label: "Dashboard", Icon: LayoutDashboard },
@@ -23,7 +25,17 @@ const ITENS: { aba: Aba; label: string; Icon: LucideIcon }[] = [
   { aba: "cupons", label: "Cupons", Icon: Ticket },
 ];
 
-export function Sidebar({ abaAtiva, onMudarAba }: { abaAtiva: Aba; onMudarAba: (a: Aba) => void }) {
+export function Sidebar({
+  abaAtiva,
+  onMudarAba,
+  usuario,
+  onSair,
+}: {
+  abaAtiva: Aba;
+  onMudarAba: (a: Aba) => void;
+  usuario: UsuarioSessao;
+  onSair: () => void;
+}) {
   return (
     <aside className="sticky top-0 z-20 flex w-full flex-shrink-0 flex-col gap-4 bg-gradient-to-b from-header to-header-alt p-4 text-white lg:h-screen lg:w-60 lg:gap-6 lg:overflow-y-auto lg:p-5">
       <div className="flex items-center gap-3 px-1.5">
@@ -52,6 +64,21 @@ export function Sidebar({ abaAtiva, onMudarAba }: { abaAtiva: Aba; onMudarAba: (
           </button>
         ))}
       </nav>
+
+      <div className="mt-auto flex items-center gap-2.5 border-t border-white/10 px-1.5 pt-4">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-medium text-white">{usuario.nome || usuario.email}</p>
+          {usuario.nome && <p className="truncate text-xs text-[#a8abc0]">{usuario.email}</p>}
+        </div>
+        <button
+          type="button"
+          onClick={onSair}
+          title="Sair"
+          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-[#b8b8c8] transition-colors hover:bg-white/10 hover:text-white"
+        >
+          <LogOut className="h-4 w-4" />
+        </button>
+      </div>
     </aside>
   );
 }

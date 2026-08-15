@@ -1,8 +1,19 @@
+// Disparado sempre que uma chamada à API volta 401 (sessão ausente/expirada)
+// — `useSessao()` escuta esse evento pra derrubar o usuário de volta pro
+// login sem precisar que cada página trate 401 na mão. Não dispara pras
+// próprias rotas de /auth (login errado, por exemplo, também é 401, mas aí
+// não faz sentido "deslogar" quem nem estava logado).
+export const EVENTO_NAO_AUTENTICADO = "divulga-links:nao-autenticado";
+
 export async function api<T = any>(caminho: string, opcoes?: RequestInit): Promise<T> {
   const resposta = await fetch(`/api${caminho}`, {
     headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
     ...opcoes,
   });
+  if (resposta.status === 401 && !caminho.startsWith("/auth/")) {
+    window.dispatchEvent(new Event(EVENTO_NAO_AUTENTICADO));
+  }
   if (!resposta.ok) {
     const corpo = await resposta.json().catch(() => ({}));
     throw new Error(corpo.erro || `Erro ${resposta.status}`);
