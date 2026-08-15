@@ -1,35 +1,46 @@
 import { verificarNovasMensagens } from "../integracoes/telegramListener/cliente.js";
 import { processarMensagemGrupo } from "../servicos/processarMensagemGrupo.js";
+import * as usuariosRepo from "../repositorios/usuarios.js";
 import { logger } from "../config/logger.js";
 
 const INTERVALO_VERIFICACAO_MS = 45 * 1000; // confere grupos monitorados a cada 45s
 
 export function iniciarAgendadorMonitorTelegram(): void {
   // `setInterval` não espera o callback terminar — se uma rodada demora mais
-  // que 45s (raspagem de produto no Chrome pode levar bem mais, sobretudo
-  // com várias mensagens pra processar), a próxima começava em paralelo,
-  // as duas lendo o mesmo cursor (ainda não atualizado) e processando a
-  // MESMA mensagem duas vezes. Bug real: "Gloss Fran By Franciny..."
-  // capturado 2x, ~1min de diferença — a segunda tentativa, rodando ao
-  // mesmo tempo que a primeira, competiu por recursos do Chrome e falhou em
-  // extrair o preço. Esse guard garante só uma rodada por vez.
-  let emAndamento = false;
+  // que 45s pra um tenant, a próxima rodada geral começando em paralelo
+  // podia rodar ESSE MESMO tenant de novo, as duas lendo o mesmo cursor
+  // (ainda não atualizado) e processando a MESMA mensagem duas vezes (bug
+  // real, ver histórico anterior ao multi-tenant). Guard por tenant (Set),
+  // não mais um único booleano de módulo — diferente de antes, tenants
+  // DIFERENTES podem rodar em paralelo entre si (cada um com seu próprio
+  // TelegramClient, sem recurso compartilhado, ver telegramListener/cliente.ts).
+  const emAndamento = new Set<number>();
 
-  const rodar = async () => {
-    if (emAndamento) return;
-    emAndamento = true;
+  const rodarTenant = async (usuarioId: number) => {
+    if (emAndamento.has(usuarioId)) return;
+    emAndamento.add(usuarioId);
     try {
-      await verificarNovasMensagens((texto, grupoId, nicho) =>
-        processarMensagemGrupo(texto, "telegram", nicho, grupoId),
+      await verificarNovasMensagens(usuarioId, (texto, grupoId, nicho) =>
+        processarMensagemGrupo(usuarioId, texto, "telegram", nicho, grupoId),
       );
     } catch (err) {
-      logger.error({ err }, "falha ao verificar mensagens novas do monitor de Telegram");
+      logger.error({ err, usuarioId }, "falha ao verificar mensagens novas do monitor de Telegram desse tenant");
     } finally {
-      emAndamento = false;
+      emAndamento.delete(usuarioId);
     }
   };
 
-  rodar();
-  setInterval(rodar, INTERVALO_VERIFICACAO_MS);
+  const rodarTodosOsTenants = async () => {
+    const usuarios = await usuariosRepo.listarAtivos();
+    for (const { id: usuarioId } of usuarios) {
+      // Não espera terminar — cada tenant roda de forma independente
+      // (ver comentário do Set acima), então dispara todos sem `await` em
+      // série aqui.
+      rodarTenant(usuarioId);
+    }
+  };
+
+  rodarTodosOsTenants();
+  setInterval(rodarTodosOsTenants, INTERVALO_VERIFICACAO_MS);
   logger.info("agendador do monitor de grupos do Telegram rodando (confere a cada 45s)");
 }

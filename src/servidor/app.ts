@@ -10,9 +10,10 @@ import { rotaCanais } from "./rotas/canais.js";
 import { rotaProdutos } from "./rotas/produtos.js";
 import { rotaCupons } from "./rotas/cupons.js";
 import { rotaDisparoAutomatico } from "./rotas/disparoAutomatico.js";
-import { rotaWhatsapp } from "./rotas/whatsapp.js";
+import { rotaWhatsapp, handlerWebhookWhatsapp } from "./rotas/whatsapp.js";
 import { rotaTelegramListener } from "./rotas/telegramListener.js";
 import { rotaDashboard } from "./rotas/dashboard.js";
+import { exigirAutenticacao } from "./middleware/autenticacao.js";
 
 const DIRETORIO_PUBLIC = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -41,11 +42,16 @@ export function criarApp() {
 
   app.use("/api/auth", rotaAuth);
 
-  // TODO(Fase 4 do plano multi-tenant): montar `exigirAutenticacao` aqui,
-  // antes das rotas abaixo, e escopar cada uma delas por `req.usuarioId`
-  // (hoje ainda leem/escrevem dado global, sem tenant — ver PROJECT_STATUS
-  // e o plano salvo). Até lá, as rotas de auth acima existem mas nada as
-  // usa de verdade — o painel continua igual, sem login.
+  // Webhook da Evolution API — precisa ficar ANTES do middleware de auth
+  // (é a Evolution chamando o painel, sem cookie de sessão nenhum pra
+  // validar). Registrado como rota explícita, não como parte do router
+  // `rotaWhatsapp` (esse sim fica atrás do auth, ver abaixo) — o tenant é
+  // resolvido de dentro do handler via regex sobre `corpo.instance` (nome
+  // determinístico `tenant-{usuarioId}`), não via `req.usuarioId`.
+  app.post("/api/whatsapp/webhook", handlerWebhookWhatsapp);
+
+  app.use(exigirAutenticacao);
+
   app.use("/api/status", rotaStatus);
   app.use("/api/nichos", rotaNichos);
   app.use("/api/configuracoes", rotaConfiguracoes);

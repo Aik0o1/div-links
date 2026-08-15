@@ -3,7 +3,6 @@ import { iniciarAgendadorDisparo } from "./agendadorDisparo.js";
 import { iniciarAgendadorMonitorTelegram } from "./agendadorMonitorTelegram.js";
 import { env } from "../config/env.js";
 import { logger } from "../config/logger.js";
-import { configurarWebhook } from "../integracoes/evolutionApi/instancia.js";
 
 // Rede de segurança — desde o Node 15, uma promise rejeitada sem `.catch()`
 // em lugar nenhum da cadeia vira uncaughtException e MATA O PROCESSO
@@ -33,6 +32,8 @@ app.listen(env.portaUi, () => {
 iniciarAgendadorDisparo();
 iniciarAgendadorMonitorTelegram();
 
-configurarWebhook().catch((err) => {
-  logger.warn({ err }, "não deu pra configurar o webhook da Evolution API (instância ainda não criada?)");
-});
+// configurarWebhook() não roda mais aqui uma vez fixo pra uma instância
+// global — desde o multi-tenant, cada tenant tem a própria instância
+// Evolution (`tenant-${usuarioId}`) e o webhook dela é configurado no
+// próprio fluxo de conexão do WhatsApp (ver obterQrCode em
+// integracoes/evolutionApi/instancia.ts).

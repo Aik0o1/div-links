@@ -1,5 +1,6 @@
 import { requiredEvolutionConfig, env } from "../../config/env.js";
 import { chamarEvolutionApi } from "./cliente.js";
+import { logger } from "../../config/logger.js";
 
 /**
  * Nome de instância determinístico por tenant — sem coluna nova pra
@@ -48,6 +49,13 @@ export async function obterQrCode(usuarioId: number): Promise<QrCode> {
     const resposta = await chamarEvolutionApi("/instance/create", {
       method: "POST",
       body: { instanceName: instancia, qrcode: true, integration: "WHATSAPP-BAILEYS" },
+    });
+    // Configura o webhook já na criação da instância — antes rodava uma vez
+    // fixo em iniciar.ts (uma instância global só); agora cada tenant cria a
+    // própria instância nesse fluxo, então é aqui que faz sentido garantir o
+    // webhook dela. Idempotente, não bloqueia a resposta do QR code se falhar.
+    configurarWebhook(usuarioId).catch((err) => {
+      logger.warn({ err, usuarioId }, "não deu pra configurar o webhook da instância recém-criada");
     });
     return {
       base64: resposta?.qrcode?.base64 ?? null,
