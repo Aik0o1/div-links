@@ -1,4 +1,5 @@
 import { pool } from "../db/pool.js";
+import { criptografarConfig, descriptografarConfig } from "../config/criptografiaConfig.js";
 
 async function obter(usuarioId: number, chave: string): Promise<string | null> {
   const { rows } = await pool.query(
@@ -34,12 +35,19 @@ export async function definirDisparoAutomaticoAtivo(usuarioId: number, ativo: bo
   await definir(usuarioId, "disparo_automatico_ativo", String(ativo));
 }
 
+/**
+ * Criptografada em repouso (ver config/criptografiaConfig.ts) — é a sessão
+ * MTProto da conta pessoal do Telegram usada pra monitorar grupo de
+ * terceiros, equivalente a uma credencial de login válida. Descriptografia
+ * tolera valor legado em texto puro (salvo antes dessa mudança).
+ */
 export async function obterTelegramListenerSessao(usuarioId: number): Promise<string | null> {
-  return obter(usuarioId, "telegram_listener_sessao");
+  const valor = await obter(usuarioId, "telegram_listener_sessao");
+  return valor ? descriptografarConfig(valor) : null;
 }
 
 export async function definirTelegramListenerSessao(usuarioId: number, sessao: string): Promise<void> {
-  await definir(usuarioId, "telegram_listener_sessao", sessao);
+  await definir(usuarioId, "telegram_listener_sessao", criptografarConfig(sessao));
 }
 
 export interface GrupoMonitoradoConfig {
@@ -172,14 +180,17 @@ export async function definirShopeeConfig(usuarioId: number, config: ShopeeConfi
  * meliHttp.ts). Expira periodicamente (igual qualquer sessão web); quando
  * expirar, a raspagem passa a falhar com erro claro pedindo pra atualizar
  * aqui. Fica no banco (não no .env) porque precisa poder ser atualizado sem
- * reiniciar o processo.
+ * reiniciar o processo. Criptografado em repouso (ver
+ * config/criptografiaConfig.ts) — é equivalente a uma sessão logada de
+ * verdade. Descriptografia tolera valor legado em texto puro.
  */
 export async function obterMeliSessionCookie(usuarioId: number): Promise<string | null> {
-  return obter(usuarioId, "meli_session_cookie");
+  const valor = await obter(usuarioId, "meli_session_cookie");
+  return valor ? descriptografarConfig(valor) : null;
 }
 
 export async function definirMeliSessionCookie(usuarioId: number, cookie: string): Promise<void> {
-  await definir(usuarioId, "meli_session_cookie", cookie);
+  await definir(usuarioId, "meli_session_cookie", criptografarConfig(cookie));
 }
 
 export interface MeliAfiliadoConfig {
