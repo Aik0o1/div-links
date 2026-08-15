@@ -262,6 +262,7 @@ Copie o `.env` da máquina antiga **por fora do git** (nunca vai pro repositóri
 | `TELEGRAM_BOT_TOKEN` | Bot via @BotFather — **global, compartilhado entre todos os tenants** (ver seção 2.12), não é por conta |
 | `EVOLUTION_API_KEY` | Gerada por você (ex.: `openssl rand -hex 16`) — precisa ser o **mesmo valor** em `AUTHENTICATION_API_KEY` no `docker-compose.yml` (já referenciado via `${EVOLUTION_API_KEY}`, não precisa editar o compose). Não existe mais `EVOLUTION_INSTANCE` — o nome da instância é `tenant-{usuarioId}`, calculado no código (ver seção 2.12) |
 | `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` | Credenciais de app em [my.telegram.org](https://my.telegram.org) (login com o número que vai monitorar o grupo, "API development tools", cria um app qualquer) — usadas pelo monitor de cupons (MTProto/GramJS), não confundir com `TELEGRAM_BOT_TOKEN`. Cada tenant loga a própria conta pela UI, essas variáveis só precisam existir uma vez (credencial de *app*, não de conta) |
+| `CONFIG_ENCRYPTION_KEY` | Gere com `openssl rand -hex 32` — criptografa em repouso o cookie de sessão do ML e a sessão do Telegram (ver seção 6.1). Trocar essa chave invalida qualquer valor já criptografado com a antiga |
 
 `SHOPEE_APP_ID`/`SHOPEE_SECRET` **não existem mais no `.env`** — só pela UI (aba Config. Afiliados), por tenant, sem fallback (removido em 2026-08-15, ver seção 2.12 — era um vazamento de credencial entre tenants).
 
@@ -300,16 +301,20 @@ Ainda não feito, na ordem do documento original:
 - **Observabilidade** — só logs via pino hoje, sem métricas.
 - **Captura agendada/automática** (diferente de disparo automático, que já existe — ver seção 1) — chegou a ser implementada (agendador em processo, configurável) mas foi **explicitamente revertida a pedido do usuário**: captura continua só manual (botão/API). Não reintroduzir sem pedido explícito. O **disparo**, por outro lado, roda automaticamente sozinho (`agendadorDisparo.ts`) — não confundir os dois.
 
-### 6.1 Pro sistema virar um SaaS vendável de verdade (fora de escopo da seção 2.12, ainda não feito)
+### 6.1 Pro sistema virar um SaaS vendável de verdade
 
-- **Cobrança** — sem Stripe/pagamento nenhum, não dá pra cobrar ninguém ainda.
-- **Recuperação de senha** — não existe (precisa de SMTP configurado, que não existe hoje). Esquecer a senha = ficar travado, sem caminho de recuperação.
-- **Confirmação de email** no cadastro — não existe, qualquer email é aceito sem verificar.
-- **Rate limiting / proteção brute-force no login** — sem limite de tentativas.
-- **Criptografia em repouso** do cookie de sessão do ML e da sessão do Telegram (`configuracoes.meli_session_cookie`/`telegram_listener_sessao`) — hoje ficam em texto puro no Postgres.
-- **RBAC / múltiplos usuários por conta** — hoje é 1 conta = 1 usuário, sem times/permissões.
-- **Limpeza automática de instância Evolution órfã** — deletar uma conta não libera a instância WhatsApp correspondente no Evolution API.
-- **Deploy real** — hoje tudo roda na máquina do Victor (`npm run ui` local + `docker compose` local). Precisa de servidor real, domínio, HTTPS pra outras pessoas usarem de verdade.
+**Já feito** (2026-08-15, mesmo dia da seção 2.12 — não dependiam de nenhuma conta/credencial externa):
+- **Rate limiting no login/signup** — `src/servidor/middleware/rateLimit.ts` (`express-rate-limit`, store em memória): 10 tentativas de login por IP a cada 15 min, 5 signups por IP a cada 1h.
+- **Criptografia em repouso** do cookie de sessão do ML e da sessão MTProto do Telegram — `src/config/criptografiaConfig.ts` (AES-256-GCM via `node:crypto`, chave em `CONFIG_ENCRYPTION_KEY`). Descriptografia tolera valor legado em texto puro (auto-migra no próximo `definir`, sem script separado).
+- **Testado isolamento entre tenants de ponta a ponta**: conta de teste criada via signup real em produção, confirmado que começa vazia (só os 8 nichos padrão), não vê nem consegue editar/deletar dado de outra conta (`buscarPorId`/`atualizar`/`remover` filtrando por `usuario_id` funcionando como esperado), removida depois do teste.
+
+**Ainda fora de escopo** — dependem de decisão/credencial externa do usuário, não dá pra simplesmente implementar:
+- **Cobrança** — sem Stripe/pagamento nenhum, não dá pra cobrar ninguém ainda. Precisa de conta Stripe (ou equivalente) e decisão de modelo de preço.
+- **Recuperação de senha** — não existe (precisa de um provedor de SMTP configurado, que não existe hoje). Esquecer a senha = ficar travado, sem caminho de recuperação.
+- **Confirmação de email** no cadastro — não existe, qualquer email é aceito sem verificar. Mesma dependência de SMTP da recuperação de senha.
+- **RBAC / múltiplos usuários por conta** — hoje é 1 conta = 1 usuário, sem times/permissões. Dá pra implementar sem dependência externa, mas é decisão de produto/design maior, não entrou nesta rodada.
+- **Limpeza automática de instância Evolution órfã** — deletar uma conta não libera a instância WhatsApp correspondente no Evolution API (hoje nem existe um fluxo de "deletar minha conta" na UI).
+- **Deploy real** — hoje tudo roda na máquina do Victor (`npm run ui` local + `docker compose` local). Precisa de servidor real, domínio, HTTPS — decisão de onde/como hospedar é do usuário.
 
 ---
 
