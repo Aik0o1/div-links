@@ -74,6 +74,11 @@ function paraProduto(row: any): ProdutoRow {
 // extrair o preço (concorrência por recursos do Chrome), o hash saía
 // diferente e a segunda tentativa não era pega como duplicada — postava a
 // mesma oferta duas vezes, uma delas sem preço nenhum.
+//
+// NÃO inclui usuarioId — a unicidade por tenant é feita pela constraint
+// (usuario_id, hash_conteudo), não pelo hash em si (dois tenants capturando
+// o mesmo produto real geram o MESMO hash, de propósito, e não colidem
+// porque a constraint já é composta).
 function calcularHash(produto: NovoProduto): string {
   const base = `${produto.titulo}|${produto.urlOriginal}|${produto.nicho}`;
   return createHash("sha1").update(base).digest("hex");
@@ -88,16 +93,17 @@ function precoValido(valor: number | undefined): number | null {
   return valor !== undefined && !Number.isNaN(valor) ? valor : null;
 }
 
-/** Retorna null se o produto já existir (deduplicado por hash_conteudo). */
-export async function inserirSeNovo(produto: NovoProduto): Promise<ProdutoRow | null> {
+/** Retorna null se o produto já existir pra esse tenant (deduplicado por (usuario_id, hash_conteudo)). */
+export async function inserirSeNovo(usuarioId: number, produto: NovoProduto): Promise<ProdutoRow | null> {
   const hash = calcularHash(produto);
 
   const { rows } = await pool.query(
-    `INSERT INTO produtos (fonte, url_original, titulo, preco_original, preco_promocional, imagem_url, cupom, nicho, preco_no_pix, url_afiliado, hash_conteudo, grupo_origem_id, link_cupom, chamada)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-     ON CONFLICT (hash_conteudo) DO NOTHING
+    `INSERT INTO produtos (usuario_id, fonte, url_original, titulo, preco_original, preco_promocional, imagem_url, cupom, nicho, preco_no_pix, url_afiliado, hash_conteudo, grupo_origem_id, link_cupom, chamada)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+     ON CONFLICT (usuario_id, hash_conteudo) DO NOTHING
      RETURNING *`,
     [
+      usuarioId,
       produto.fonte,
       produto.urlOriginal,
       produto.titulo,
@@ -118,13 +124,16 @@ export async function inserirSeNovo(produto: NovoProduto): Promise<ProdutoRow | 
   return rows[0] ? paraProduto(rows[0]) : null;
 }
 
-export async function listar(filtro?: {
-  status?: string;
-  nicho?: string;
-  fonte?: "mercado_livre" | "shopee" | "monitorados";
-}): Promise<ProdutoRow[]> {
-  const condicoes: string[] = [];
-  const valores: string[] = [];
+export async function listar(
+  usuarioId: number,
+  filtro?: {
+    status?: string;
+    nicho?: string;
+    fonte?: "mercado_livre" | "shopee" | "monitorados";
+  },
+): Promise<ProdutoRow[]> {
+  const condicoes: string[] = ["usuario_id = $1"];
+  const valores: unknown[] = [usuarioId];
 
   if (filtro?.status) {
     valores.push(filtro.status);
@@ -144,9 +153,8 @@ export async function listar(filtro?: {
     condicoes.push(`fonte IN ('shopee', 'telegram_shopee', 'whatsapp_shopee')`);
   }
 
-  const where = condicoes.length > 0 ? `WHERE ${condicoes.join(" AND ")}` : "";
   const { rows } = await pool.query(
-    `SELECT * FROM produtos ${where} ORDER BY criado_em DESC LIMIT 1000`,
+    `SELECT * FROM produtos WHERE ${condicoes.join(" AND ")} ORDER BY criado_em DESC LIMIT 1000`,
     valores,
   );
   return rows.map(paraProduto);
@@ -174,84 +182,93 @@ const FONTE_PRIORITARIA = "'telegram_terceiros', 'whatsapp_terceiros', 'telegram
  * primeiro) não muda em nenhum dos dois casos.
  */
 export async function listarPorNichos(
+  usuarioId: number,
   nichos: string[] | null,
   status: string,
   gruposPermitidos?: string[] | null,
 ): Promise<ProdutoRow[]> {
   if (nichos === null) {
     const { rows } = await pool.query(
-      `SELECT * FROM produtos WHERE status = $1
+      `SELECT * FROM produtos WHERE usuario_id = $1 AND status = $2
        ORDER BY (fonte IN (${FONTE_PRIORITARIA})) DESC, criado_em ASC`,
-      [status],
+      [usuarioId, status],
     );
     return rows.map(paraProduto);
   }
 
   const { rows } = await pool.query(
     `SELECT * FROM produtos
-     WHERE status = $2 AND (nicho = ANY($1) OR ($3::text[] IS NOT NULL AND grupo_origem_id = ANY($3)))
+     WHERE usuario_id = $1 AND status = $3 AND (nicho = ANY($2) OR ($4::text[] IS NOT NULL AND grupo_origem_id = ANY($4)))
      ORDER BY (fonte IN (${FONTE_PRIORITARIA})) DESC, criado_em ASC`,
-    [nichos, status, gruposPermitidos && gruposPermitidos.length > 0 ? gruposPermitidos : null],
+    [usuarioId, nichos, status, gruposPermitidos && gruposPermitidos.length > 0 ? gruposPermitidos : null],
   );
   return rows.map(paraProduto);
 }
 
-export async function buscarPorId(id: number): Promise<ProdutoRow | null> {
-  const { rows } = await pool.query("SELECT * FROM produtos WHERE id = $1", [id]);
+export async function buscarPorId(usuarioId: number, id: number): Promise<ProdutoRow | null> {
+  const { rows } = await pool.query("SELECT * FROM produtos WHERE id = $1 AND usuario_id = $2", [id, usuarioId]);
   return rows[0] ? paraProduto(rows[0]) : null;
 }
 
-/** Remove os produtos ainda não disparados (usado antes de uma nova captura, pra substituir a leva anterior). */
-export async function removerTodos(): Promise<void> {
-  await pool.query("DELETE FROM produtos");
+/** Remove os produtos ainda não disparados desse tenant (usado antes de uma nova captura, pra substituir a leva anterior). */
+export async function removerTodos(usuarioId: number): Promise<void> {
+  await pool.query("DELETE FROM produtos WHERE usuario_id = $1", [usuarioId]);
 }
 
 /**
- * Wipe escopado a um nicho+fonte só — usado pela captura por aba (ver
- * capturarProdutosPorNicho em capturarProdutos.ts), pra recapturar só aquela
- * categoria sem apagar os outros nichos nem a Shopee. Diferente de
- * removerTodos(), que apaga a tabela inteira (só usado no "Limpar todos" e
- * na captura ML global via CLI/rota sem nicho).
+ * Wipe escopado a um nicho+fonte só (desse tenant) — usado pela captura por
+ * aba (ver capturarProdutosPorNicho em capturarProdutos.ts), pra recapturar
+ * só aquela categoria sem apagar os outros nichos nem a Shopee. Diferente de
+ * removerTodos(), que apaga todos os produtos do tenant.
  */
-export async function removerPorNichoEFonte(nicho: string, fonte: string): Promise<void> {
-  await pool.query("DELETE FROM produtos WHERE nicho = $1 AND fonte = $2", [nicho, fonte]);
+export async function removerPorNichoEFonte(usuarioId: number, nicho: string, fonte: string): Promise<void> {
+  await pool.query("DELETE FROM produtos WHERE usuario_id = $1 AND nicho = $2 AND fonte = $3", [
+    usuarioId,
+    nicho,
+    fonte,
+  ]);
 }
 
-export async function remover(id: number): Promise<void> {
-  await pool.query("DELETE FROM produtos WHERE id = $1", [id]);
+export async function remover(usuarioId: number, id: number): Promise<void> {
+  await pool.query("DELETE FROM produtos WHERE id = $1 AND usuario_id = $2", [id, usuarioId]);
 }
 
 export async function atualizarStatus(
+  usuarioId: number,
   id: number,
   status: string,
   urlAfiliado?: string,
 ): Promise<void> {
   await pool.query(
-    "UPDATE produtos SET status = $2, url_afiliado = COALESCE($3, url_afiliado) WHERE id = $1",
-    [id, status, urlAfiliado ?? null],
+    "UPDATE produtos SET status = $3, url_afiliado = COALESCE($4, url_afiliado) WHERE id = $1 AND usuario_id = $2",
+    [id, usuarioId, status, urlAfiliado ?? null],
   );
 }
 
-export async function atualizarChamada(id: number, chamada: string): Promise<void> {
-  await pool.query("UPDATE produtos SET chamada = $2 WHERE id = $1", [id, chamada]);
+export async function atualizarChamada(usuarioId: number, id: number, chamada: string): Promise<void> {
+  await pool.query("UPDATE produtos SET chamada = $3 WHERE id = $1 AND usuario_id = $2", [id, usuarioId, chamada]);
 }
 
-/** Produtos capturados "hoje" (fuso America/Sao_Paulo), qualquer status — card do Dashboard. */
-export async function contarCapturadosHoje(): Promise<number> {
+/** Produtos capturados "hoje" (fuso America/Sao_Paulo), qualquer status, desse tenant — card do Dashboard. */
+export async function contarCapturadosHoje(usuarioId: number): Promise<number> {
   const { rows } = await pool.query(
     `SELECT count(*) AS total FROM produtos
-     WHERE criado_em AT TIME ZONE 'America/Sao_Paulo' >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo')`,
+     WHERE usuario_id = $1
+       AND criado_em AT TIME ZONE 'America/Sao_Paulo' >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo')`,
+    [usuarioId],
   );
   return Number(rows[0].total);
 }
 
 /**
- * Fila pendente — total agregado de produtos "capturado" esperando disparo.
- * Não é por canal (reproduzir a elegibilidade de canal em SQL duplicaria a
- * regra de negócio que já existe em dispararProduto.ts) — só um número geral
- * pro card do Dashboard.
+ * Fila pendente — total agregado de produtos "capturado" desse tenant
+ * esperando disparo. Não é por canal (reproduzir a elegibilidade de canal em
+ * SQL duplicaria a regra de negócio que já existe em dispararProduto.ts) —
+ * só um número geral pro card do Dashboard.
  */
-export async function contarPendentes(): Promise<number> {
-  const { rows } = await pool.query(`SELECT count(*) AS total FROM produtos WHERE status = 'capturado'`);
+export async function contarPendentes(usuarioId: number): Promise<number> {
+  const { rows } = await pool.query(`SELECT count(*) AS total FROM produtos WHERE usuario_id = $1 AND status = 'capturado'`, [
+    usuarioId,
+  ]);
   return Number(rows[0].total);
 }

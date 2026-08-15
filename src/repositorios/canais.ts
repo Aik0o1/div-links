@@ -30,31 +30,35 @@ function paraCanal(row: any): CanalRow {
   };
 }
 
-export async function listar(): Promise<CanalRow[]> {
-  const { rows } = await pool.query("SELECT * FROM canais_destino ORDER BY id");
+export async function listar(usuarioId: number): Promise<CanalRow[]> {
+  const { rows } = await pool.query("SELECT * FROM canais_destino WHERE usuario_id = $1 ORDER BY id", [usuarioId]);
   return rows.map(paraCanal);
 }
 
-export async function buscarPorId(id: number): Promise<CanalRow | null> {
-  const { rows } = await pool.query("SELECT * FROM canais_destino WHERE id = $1", [id]);
+export async function buscarPorId(usuarioId: number, id: number): Promise<CanalRow | null> {
+  const { rows } = await pool.query("SELECT * FROM canais_destino WHERE id = $1 AND usuario_id = $2", [id, usuarioId]);
   return rows[0] ? paraCanal(rows[0]) : null;
 }
 
-export async function criar(dados: {
-  nome?: string | null;
-  tipo: "whatsapp" | "telegram";
-  identificadorGrupo: string;
-  categoriasPermitidas?: string[] | null;
-  fontesPermitidas?: string[] | null;
-  gruposMonitoradosPermitidos?: string[] | null;
-  descontoMinimo?: number;
-  intervaloMinimoMinutos?: number;
-}): Promise<CanalRow> {
+export async function criar(
+  usuarioId: number,
+  dados: {
+    nome?: string | null;
+    tipo: "whatsapp" | "telegram";
+    identificadorGrupo: string;
+    categoriasPermitidas?: string[] | null;
+    fontesPermitidas?: string[] | null;
+    gruposMonitoradosPermitidos?: string[] | null;
+    descontoMinimo?: number;
+    intervaloMinimoMinutos?: number;
+  },
+): Promise<CanalRow> {
   const { rows } = await pool.query(
-    `INSERT INTO canais_destino (nome, tipo, identificador_grupo, categorias_permitidas, fontes_permitidas, grupos_monitorados_permitidos, desconto_minimo, intervalo_minimo_minutos)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO canais_destino (usuario_id, nome, tipo, identificador_grupo, categorias_permitidas, fontes_permitidas, grupos_monitorados_permitidos, desconto_minimo, intervalo_minimo_minutos)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING *`,
     [
+      usuarioId,
       dados.nome ?? null,
       dados.tipo,
       dados.identificadorGrupo,
@@ -69,6 +73,7 @@ export async function criar(dados: {
 }
 
 export async function atualizar(
+  usuarioId: number,
   id: number,
   dados: Partial<{
     nome: string | null;
@@ -88,7 +93,7 @@ export async function atualizar(
   // os outros sem querer (o painel de config e o de dados básicos do canal
   // salvam separado, ver app.js).
   const sets: string[] = [];
-  const valores: unknown[] = [id];
+  const valores: unknown[] = [id, usuarioId];
 
   function definir(coluna: string, valor: unknown) {
     valores.push(valor);
@@ -106,15 +111,15 @@ export async function atualizar(
     definir("intervalo_minimo_minutos", dados.intervaloMinimoMinutos);
   if (dados.ativo !== undefined) definir("ativo", dados.ativo);
 
-  if (sets.length === 0) return buscarPorId(id);
+  if (sets.length === 0) return buscarPorId(usuarioId, id);
 
   const { rows } = await pool.query(
-    `UPDATE canais_destino SET ${sets.join(", ")} WHERE id = $1 RETURNING *`,
+    `UPDATE canais_destino SET ${sets.join(", ")} WHERE id = $1 AND usuario_id = $2 RETURNING *`,
     valores,
   );
   return rows[0] ? paraCanal(rows[0]) : null;
 }
 
-export async function remover(id: number): Promise<void> {
-  await pool.query("DELETE FROM canais_destino WHERE id = $1", [id]);
+export async function remover(usuarioId: number, id: number): Promise<void> {
+  await pool.query("DELETE FROM canais_destino WHERE id = $1 AND usuario_id = $2", [id, usuarioId]);
 }

@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import * as usuariosRepo from "../../repositorios/usuarios.js";
 import * as sessoesRepo from "../../repositorios/sessoes.js";
+import { seedNichosPadrao } from "../../servicos/seedNichosPadrao.js";
 import { logger } from "../../config/logger.js";
 import { NOME_COOKIE_SESSAO, opcoesCookieSessao, exigirAutenticacao, hashToken } from "../middleware/autenticacao.js";
 
@@ -47,10 +48,7 @@ rotaAuth.post("/signup", async (req, res) => {
 
     const senhaHash = await bcrypt.hash(senha, CUSTO_BCRYPT);
     const usuario = await usuariosRepo.criar(email, senhaHash, typeof nome === "string" ? nome : undefined);
-    // TODO(Fase 4 do plano multi-tenant): chamar seedNichosPadrao(usuario.id)
-    // aqui assim que `nichos` ganhar usuario_id (migration 022/023) — hoje
-    // ainda é uma tabela global única (PK só por `id`), chamar isso agora
-    // colidiria com os nichos que já existem (chave duplicada).
+    await seedNichosPadrao(usuario.id);
     await criarSessaoECookie(res, usuario.id, req);
 
     res.status(201).json({ id: usuario.id, email: usuario.email, nome: usuario.nome });

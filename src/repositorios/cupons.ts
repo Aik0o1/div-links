@@ -17,23 +17,27 @@ export function hashTexto(texto: string): string {
   return createHash("sha1").update(texto.trim()).digest("hex");
 }
 
-/** Insere se o texto ainda não foi visto (dedup por hash); devolve null se já existia. */
-export async function inserirSeNovo(texto: string, grupoOrigemId?: string): Promise<CupomRow | null> {
+/** Insere se o texto ainda não foi visto por esse tenant (dedup por hash); devolve null se já existia. */
+export async function inserirSeNovo(
+  usuarioId: number,
+  texto: string,
+  grupoOrigemId?: string,
+): Promise<CupomRow | null> {
   const hash = hashTexto(texto);
   const { rows } = await pool.query(
-    `INSERT INTO cupons_capturados (texto, hash_conteudo, grupo_origem_id)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (hash_conteudo) DO NOTHING
+    `INSERT INTO cupons_capturados (usuario_id, texto, hash_conteudo, grupo_origem_id)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (usuario_id, hash_conteudo) DO NOTHING
      RETURNING *`,
-    [texto, hash, grupoOrigemId ?? null],
+    [usuarioId, texto, hash, grupoOrigemId ?? null],
   );
   return rows[0] ? paraCupom(rows[0]) : null;
 }
 
-export async function listarRecentes(limite = 50): Promise<CupomRow[]> {
+export async function listarRecentes(usuarioId: number, limite = 50): Promise<CupomRow[]> {
   const { rows } = await pool.query(
-    "SELECT * FROM cupons_capturados ORDER BY recebido_em DESC LIMIT $1",
-    [limite],
+    "SELECT * FROM cupons_capturados WHERE usuario_id = $1 ORDER BY recebido_em DESC LIMIT $2",
+    [usuarioId, limite],
   );
   return rows.map(paraCupom);
 }
@@ -45,10 +49,10 @@ export interface DisparoCupomRow {
 }
 
 /** Disparos (tentados ou enviados) desse cupom, um por canal em que foi tentado — pra mostrar na aba Cupons pra onde cada um foi (ou tentou ir). */
-export async function listarDisparosPorCupom(cupomId: number): Promise<DisparoCupomRow[]> {
+export async function listarDisparosPorCupom(usuarioId: number, cupomId: number): Promise<DisparoCupomRow[]> {
   const { rows } = await pool.query(
-    "SELECT canal_id, status, enviado_em FROM cupons_disparos WHERE cupom_id = $1 ORDER BY id ASC",
-    [cupomId],
+    "SELECT canal_id, status, enviado_em FROM cupons_disparos WHERE cupom_id = $1 AND usuario_id = $2 ORDER BY id ASC",
+    [cupomId, usuarioId],
   );
   return rows.map((r) => ({ canalId: r.canal_id, status: r.status, enviadoEm: r.enviado_em }));
 }
@@ -70,29 +74,35 @@ const JANELA_RETENTATIVA_HORAS = 3;
  * no momento em que chegou se perdia pra sempre, sem nenhuma tentativa nova
  * depois.
  */
-export async function listarPendentesParaCanal(canalId: number, limite = 20): Promise<CupomRow[]> {
+export async function listarPendentesParaCanal(
+  usuarioId: number,
+  canalId: number,
+  limite = 20,
+): Promise<CupomRow[]> {
   const { rows } = await pool.query(
     `SELECT cc.* FROM cupons_capturados cc
-     WHERE cc.recebido_em > now() - ($3::text || ' hours')::interval
+     WHERE cc.usuario_id = $1
+       AND cc.recebido_em > now() - ($4::text || ' hours')::interval
        AND NOT EXISTS (
          SELECT 1 FROM cupons_disparos cd
-         WHERE cd.cupom_id = cc.id AND cd.canal_id = $1 AND cd.status = 'enviado'
+         WHERE cd.cupom_id = cc.id AND cd.canal_id = $2 AND cd.status = 'enviado'
        )
      ORDER BY cc.recebido_em ASC
-     LIMIT $2`,
-    [canalId, limite, JANELA_RETENTATIVA_HORAS],
+     LIMIT $3`,
+    [usuarioId, canalId, limite, JANELA_RETENTATIVA_HORAS],
   );
   return rows.map(paraCupom);
 }
 
 export async function registrarDisparo(
+  usuarioId: number,
   cupomId: number,
   canalId: number,
   status: "enviado" | "falhou",
 ): Promise<void> {
   await pool.query(
-    `INSERT INTO cupons_disparos (cupom_id, canal_id, status, enviado_em)
-     VALUES ($1, $2, $3, CASE WHEN $3 = 'enviado' THEN now() ELSE NULL END)`,
-    [cupomId, canalId, status],
+    `INSERT INTO cupons_disparos (usuario_id, cupom_id, canal_id, status, enviado_em)
+     VALUES ($1, $2, $3, $4, CASE WHEN $4 = 'enviado' THEN now() ELSE NULL END)`,
+    [usuarioId, cupomId, canalId, status],
   );
 }

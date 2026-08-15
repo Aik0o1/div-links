@@ -1,14 +1,15 @@
 import { pool } from "../db/pool.js";
 
 export async function registrar(
+  usuarioId: number,
   produtoId: number,
   canalId: number,
   status: "enviado" | "falhou",
 ): Promise<void> {
   await pool.query(
-    `INSERT INTO disparos (produto_id, canal_id, status, enviado_em)
-     VALUES ($1, $2, $3, CASE WHEN $3 = 'enviado' THEN now() ELSE NULL END)`,
-    [produtoId, canalId, status],
+    `INSERT INTO disparos (usuario_id, produto_id, canal_id, status, enviado_em)
+     VALUES ($1, $2, $3, $4, CASE WHEN $4 = 'enviado' THEN now() ELSE NULL END)`,
+    [usuarioId, produtoId, canalId, status],
   );
 }
 
@@ -23,32 +24,32 @@ export async function registrar(
  * diferença, intervalo configurado de 8 minutos — risco de o número ser
  * marcado como spam.
  */
-export async function ultimoEnvioGeralPorCanal(canalId: number): Promise<Date | null> {
+export async function ultimoEnvioGeralPorCanal(usuarioId: number, canalId: number): Promise<Date | null> {
   const { rows } = await pool.query(
     `SELECT MAX(enviado_em) AS ultimo FROM (
-       SELECT enviado_em FROM disparos WHERE canal_id = $1 AND status = 'enviado'
+       SELECT enviado_em FROM disparos WHERE usuario_id = $1 AND canal_id = $2 AND status = 'enviado'
        UNION ALL
-       SELECT enviado_em FROM cupons_disparos WHERE canal_id = $1 AND status = 'enviado'
+       SELECT enviado_em FROM cupons_disparos WHERE usuario_id = $1 AND canal_id = $2 AND status = 'enviado'
      ) t`,
-    [canalId],
+    [usuarioId, canalId],
   );
   return rows[0]?.ultimo ?? null;
 }
 
-export async function contarFalhas(produtoId: number): Promise<number> {
+export async function contarFalhas(usuarioId: number, produtoId: number): Promise<number> {
   const { rows } = await pool.query(
-    `SELECT count(*) AS total FROM disparos WHERE produto_id = $1 AND status = 'falhou'`,
-    [produtoId],
+    `SELECT count(*) AS total FROM disparos WHERE usuario_id = $1 AND produto_id = $2 AND status = 'falhou'`,
+    [usuarioId, produtoId],
   );
   return Number(rows[0].total);
 }
 
-/** Total de disparos "hoje" (fuso America/Sao_Paulo) por status, pro card do Dashboard. */
-export async function contarHoje(status: "enviado" | "falhou"): Promise<number> {
+/** Total de disparos "hoje" (fuso America/Sao_Paulo) por status, desse tenant, pro card do Dashboard. */
+export async function contarHoje(usuarioId: number, status: "enviado" | "falhou"): Promise<number> {
   const { rows } = await pool.query(
     `SELECT count(*) AS total FROM disparos
-     WHERE status = $1 AND criado_em AT TIME ZONE 'America/Sao_Paulo' >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo')`,
-    [status],
+     WHERE usuario_id = $1 AND status = $2 AND criado_em AT TIME ZONE 'America/Sao_Paulo' >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo')`,
+    [usuarioId, status],
   );
   return Number(rows[0].total);
 }
@@ -59,16 +60,17 @@ export interface DisparosPorHora {
   falhas: number;
 }
 
-/** Disparos de hoje agrupados por hora (0-23, fuso America/Sao_Paulo) — preenche as 24 posições, mesmo sem disparo. */
-export async function porHoraHoje(): Promise<DisparosPorHora[]> {
+/** Disparos de hoje agrupados por hora (0-23, fuso America/Sao_Paulo), desse tenant — preenche as 24 posições, mesmo sem disparo. */
+export async function porHoraHoje(usuarioId: number): Promise<DisparosPorHora[]> {
   const { rows } = await pool.query(
     `SELECT
        extract(hour FROM criado_em AT TIME ZONE 'America/Sao_Paulo')::int AS hora,
        count(*) FILTER (WHERE status = 'enviado') AS enviados,
        count(*) FILTER (WHERE status = 'falhou') AS falhas
      FROM disparos
-     WHERE criado_em AT TIME ZONE 'America/Sao_Paulo' >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo')
+     WHERE usuario_id = $1 AND criado_em AT TIME ZONE 'America/Sao_Paulo' >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo')
      GROUP BY hora`,
+    [usuarioId],
   );
 
   const porHora = new Map(rows.map((r) => [Number(r.hora), { enviados: Number(r.enviados), falhas: Number(r.falhas) }]));

@@ -1,45 +1,45 @@
 import { pool } from "../db/pool.js";
 
-async function obter(chave: string): Promise<string | null> {
+async function obter(usuarioId: number, chave: string): Promise<string | null> {
   const { rows } = await pool.query(
-    "SELECT valor FROM configuracoes WHERE chave = $1",
-    [chave],
+    "SELECT valor FROM configuracoes WHERE usuario_id = $1 AND chave = $2",
+    [usuarioId, chave],
   );
   return rows[0]?.valor ?? null;
 }
 
-async function definir(chave: string, valor: string): Promise<void> {
+async function definir(usuarioId: number, chave: string, valor: string): Promise<void> {
   await pool.query(
-    `INSERT INTO configuracoes (chave, valor) VALUES ($1, $2)
-     ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor`,
-    [chave, valor],
+    `INSERT INTO configuracoes (usuario_id, chave, valor) VALUES ($1, $2, $3)
+     ON CONFLICT (usuario_id, chave) DO UPDATE SET valor = EXCLUDED.valor`,
+    [usuarioId, chave, valor],
   );
 }
 
-export async function obterDescontoMinimo(): Promise<number> {
-  const valor = await obter("desconto_minimo");
+export async function obterDescontoMinimo(usuarioId: number): Promise<number> {
+  const valor = await obter(usuarioId, "desconto_minimo");
   return Number(valor ?? "0");
 }
 
-export async function definirDescontoMinimo(valor: number): Promise<void> {
-  await definir("desconto_minimo", String(valor));
+export async function definirDescontoMinimo(usuarioId: number, valor: number): Promise<void> {
+  await definir(usuarioId, "desconto_minimo", String(valor));
 }
 
-export async function obterDisparoAutomaticoAtivo(): Promise<boolean> {
-  const valor = await obter("disparo_automatico_ativo");
+export async function obterDisparoAutomaticoAtivo(usuarioId: number): Promise<boolean> {
+  const valor = await obter(usuarioId, "disparo_automatico_ativo");
   return valor === "true";
 }
 
-export async function definirDisparoAutomaticoAtivo(ativo: boolean): Promise<void> {
-  await definir("disparo_automatico_ativo", String(ativo));
+export async function definirDisparoAutomaticoAtivo(usuarioId: number, ativo: boolean): Promise<void> {
+  await definir(usuarioId, "disparo_automatico_ativo", String(ativo));
 }
 
-export async function obterTelegramListenerSessao(): Promise<string | null> {
-  return obter("telegram_listener_sessao");
+export async function obterTelegramListenerSessao(usuarioId: number): Promise<string | null> {
+  return obter(usuarioId, "telegram_listener_sessao");
 }
 
-export async function definirTelegramListenerSessao(sessao: string): Promise<void> {
-  await definir("telegram_listener_sessao", sessao);
+export async function definirTelegramListenerSessao(usuarioId: number, sessao: string): Promise<void> {
+  await definir(usuarioId, "telegram_listener_sessao", sessao);
 }
 
 export interface GrupoMonitoradoConfig {
@@ -65,37 +65,37 @@ function migrarGruposMonitorados(valorBruto: string | null): GrupoMonitoradoConf
  * `telegram_listener_grupo_id` (grupo único) quanto do formato intermediário
  * `string[]` (vários grupos, sem nicho).
  */
-export async function obterTelegramListenerGrupos(): Promise<GrupoMonitoradoConfig[]> {
-  const valor = await obter("telegram_listener_grupos");
+export async function obterTelegramListenerGrupos(usuarioId: number): Promise<GrupoMonitoradoConfig[]> {
+  const valor = await obter(usuarioId, "telegram_listener_grupos");
   if (valor) return migrarGruposMonitorados(valor);
 
-  const grupoUnicoAntigo = await obter("telegram_listener_grupo_id");
+  const grupoUnicoAntigo = await obter(usuarioId, "telegram_listener_grupo_id");
   return grupoUnicoAntigo ? [{ id: grupoUnicoAntigo, nicho: "geral" }] : [];
 }
 
-export async function definirTelegramListenerGrupos(grupos: GrupoMonitoradoConfig[]): Promise<void> {
-  await definir("telegram_listener_grupos", JSON.stringify(grupos));
+export async function definirTelegramListenerGrupos(usuarioId: number, grupos: GrupoMonitoradoConfig[]): Promise<void> {
+  await definir(usuarioId, "telegram_listener_grupos", JSON.stringify(grupos));
 }
 
 /** Último ID de mensagem já processado por grupo do Telegram (usado pelo polling, evita reprocessar). */
-export async function obterTelegramUltimosIds(): Promise<Record<string, number>> {
-  const valor = await obter("telegram_listener_ultimos_ids");
+export async function obterTelegramUltimosIds(usuarioId: number): Promise<Record<string, number>> {
+  const valor = await obter(usuarioId, "telegram_listener_ultimos_ids");
   return valor ? JSON.parse(valor) : {};
 }
 
-export async function definirTelegramUltimoId(grupoId: string, msgId: number): Promise<void> {
-  const atual = await obterTelegramUltimosIds();
+export async function definirTelegramUltimoId(usuarioId: number, grupoId: string, msgId: number): Promise<void> {
+  const atual = await obterTelegramUltimosIds(usuarioId);
   atual[grupoId] = msgId;
-  await definir("telegram_listener_ultimos_ids", JSON.stringify(atual));
+  await definir(usuarioId, "telegram_listener_ultimos_ids", JSON.stringify(atual));
 }
 
 /** Link fixo (ex.: lista de recomendações do ML) colocado no final da legenda dos cupons repassados. */
-export async function obterLinkCupomFixo(): Promise<string | null> {
-  return obter("link_cupom_fixo");
+export async function obterLinkCupomFixo(usuarioId: number): Promise<string | null> {
+  return obter(usuarioId, "link_cupom_fixo");
 }
 
-export async function definirLinkCupomFixo(link: string): Promise<void> {
-  await definir("link_cupom_fixo", link);
+export async function definirLinkCupomFixo(usuarioId: number, link: string): Promise<void> {
+  await definir(usuarioId, "link_cupom_fixo", link);
 }
 
 /**
@@ -107,32 +107,32 @@ export async function definirLinkCupomFixo(link: string): Promise<void> {
  * dono do grupo, não pro usuário — sempre usa o link próprio, mesmo que
  * genérico (não específico daquele produto).
  */
-export async function obterLinkCupomShopeeFixo(): Promise<string | null> {
-  return obter("link_cupom_shopee_fixo");
+export async function obterLinkCupomShopeeFixo(usuarioId: number): Promise<string | null> {
+  return obter(usuarioId, "link_cupom_shopee_fixo");
 }
 
-export async function definirLinkCupomShopeeFixo(link: string): Promise<void> {
-  await definir("link_cupom_shopee_fixo", link);
+export async function definirLinkCupomShopeeFixo(usuarioId: number, link: string): Promise<void> {
+  await definir(usuarioId, "link_cupom_shopee_fixo", link);
 }
 
 /** Grupos do WhatsApp monitorados (mesmo conceito da lista do Telegram, seção 2.7/2.8). */
-export async function obterWhatsappGruposMonitorados(): Promise<GrupoMonitoradoConfig[]> {
-  const valor = await obter("whatsapp_grupos_monitorados");
+export async function obterWhatsappGruposMonitorados(usuarioId: number): Promise<GrupoMonitoradoConfig[]> {
+  const valor = await obter(usuarioId, "whatsapp_grupos_monitorados");
   return migrarGruposMonitorados(valor);
 }
 
-export async function definirWhatsappGruposMonitorados(grupos: GrupoMonitoradoConfig[]): Promise<void> {
-  await definir("whatsapp_grupos_monitorados", JSON.stringify(grupos));
+export async function definirWhatsappGruposMonitorados(usuarioId: number, grupos: GrupoMonitoradoConfig[]): Promise<void> {
+  await definir(usuarioId, "whatsapp_grupos_monitorados", JSON.stringify(grupos));
 }
 
 /** Se desativado, o disparo (manual ou automático) não chama o Ollama pra gerar a chamada — vai sem ela. */
-export async function obterChamadaIAAtiva(): Promise<boolean> {
-  const valor = await obter("chamada_ia_ativa");
+export async function obterChamadaIAAtiva(usuarioId: number): Promise<boolean> {
+  const valor = await obter(usuarioId, "chamada_ia_ativa");
   return valor !== "false"; // default ligado (comportamento histórico)
 }
 
-export async function definirChamadaIAAtiva(ativa: boolean): Promise<void> {
-  await definir("chamada_ia_ativa", String(ativa));
+export async function definirChamadaIAAtiva(usuarioId: number, ativa: boolean): Promise<void> {
+  await definir(usuarioId, "chamada_ia_ativa", String(ativa));
 }
 
 /**
@@ -143,12 +143,12 @@ export async function definirChamadaIAAtiva(ativa: boolean): Promise<void> {
  * inteira enquanto a outra nunca sai (bug real: leva de Shopee travando o ML
  * por horas). Não afeta produto de grupo monitorado, que sempre fura fila.
  */
-export async function obterUltimaPlataformaBulkEnviada(): Promise<string | null> {
-  return obter("ultima_plataforma_bulk_enviada");
+export async function obterUltimaPlataformaBulkEnviada(usuarioId: number): Promise<string | null> {
+  return obter(usuarioId, "ultima_plataforma_bulk_enviada");
 }
 
-export async function definirUltimaPlataformaBulkEnviada(plataforma: string): Promise<void> {
-  await definir("ultima_plataforma_bulk_enviada", plataforma);
+export async function definirUltimaPlataformaBulkEnviada(usuarioId: number, plataforma: string): Promise<void> {
+  await definir(usuarioId, "ultima_plataforma_bulk_enviada", plataforma);
 }
 
 export interface ShopeeConfig {
@@ -157,13 +157,13 @@ export interface ShopeeConfig {
 }
 
 /** Credenciais da API de afiliados da Shopee, configuráveis pela UI (Config. Afiliados). */
-export async function obterShopeeConfig(): Promise<ShopeeConfig | null> {
-  const valor = await obter("shopee_config");
+export async function obterShopeeConfig(usuarioId: number): Promise<ShopeeConfig | null> {
+  const valor = await obter(usuarioId, "shopee_config");
   return valor ? (JSON.parse(valor) as ShopeeConfig) : null;
 }
 
-export async function definirShopeeConfig(config: ShopeeConfig): Promise<void> {
-  await definir("shopee_config", JSON.stringify(config));
+export async function definirShopeeConfig(usuarioId: number, config: ShopeeConfig): Promise<void> {
+  await definir(usuarioId, "shopee_config", JSON.stringify(config));
 }
 
 /**
@@ -174,12 +174,12 @@ export async function definirShopeeConfig(config: ShopeeConfig): Promise<void> {
  * aqui. Fica no banco (não no .env) porque precisa poder ser atualizado sem
  * reiniciar o processo.
  */
-export async function obterMeliSessionCookie(): Promise<string | null> {
-  return obter("meli_session_cookie");
+export async function obterMeliSessionCookie(usuarioId: number): Promise<string | null> {
+  return obter(usuarioId, "meli_session_cookie");
 }
 
-export async function definirMeliSessionCookie(cookie: string): Promise<void> {
-  await definir("meli_session_cookie", cookie);
+export async function definirMeliSessionCookie(usuarioId: number, cookie: string): Promise<void> {
+  await definir(usuarioId, "meli_session_cookie", cookie);
 }
 
 export interface MeliAfiliadoConfig {
@@ -193,11 +193,11 @@ export interface MeliAfiliadoConfig {
  * cá 2026-08-14 pra não precisar reiniciar o processo pra trocar, mesmo
  * padrão da config da Shopee.
  */
-export async function obterMeliAfiliadoConfig(): Promise<MeliAfiliadoConfig | null> {
-  const valor = await obter("meli_afiliado_config");
+export async function obterMeliAfiliadoConfig(usuarioId: number): Promise<MeliAfiliadoConfig | null> {
+  const valor = await obter(usuarioId, "meli_afiliado_config");
   return valor ? (JSON.parse(valor) as MeliAfiliadoConfig) : null;
 }
 
-export async function definirMeliAfiliadoConfig(config: MeliAfiliadoConfig): Promise<void> {
-  await definir("meli_afiliado_config", JSON.stringify(config));
+export async function definirMeliAfiliadoConfig(usuarioId: number, config: MeliAfiliadoConfig): Promise<void> {
+  await definir(usuarioId, "meli_afiliado_config", JSON.stringify(config));
 }
