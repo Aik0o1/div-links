@@ -13,7 +13,11 @@ export interface ResultadoCapturaShopee {
   total: number;
 }
 
-async function inserirOfertas(ofertas: OfertaShopee[], nicho: string): Promise<{ novos: number; duplicados: number }> {
+async function inserirOfertas(
+  usuarioId: number,
+  ofertas: OfertaShopee[],
+  nicho: string,
+): Promise<{ novos: number; duplicados: number }> {
   let novos = 0;
   let duplicados = 0;
 
@@ -25,7 +29,7 @@ async function inserirOfertas(ofertas: OfertaShopee[], nicho: string): Promise<{
         ? Number((oferta.precoPromocional / (1 - oferta.descontoPercentual / 100)).toFixed(2))
         : undefined;
 
-    const resultado = await produtosRepo.inserirSeNovo({
+    const resultado = await produtosRepo.inserirSeNovo(usuarioId, {
       fonte: "shopee",
       urlOriginal: oferta.productLink,
       urlAfiliado: oferta.offerLink,
@@ -55,28 +59,28 @@ async function inserirOfertas(ofertas: OfertaShopee[], nicho: string): Promise<{
  * palavra-chave definida (ex.: nicho novo criado só pro ML) retorna vazio,
  * sem erro.
  */
-export async function capturarProdutosShopeePorNicho(nichoId: string): Promise<ResultadoCapturaShopee> {
+export async function capturarProdutosShopeePorNicho(usuarioId: number, nichoId: string): Promise<ResultadoCapturaShopee> {
   let novos = 0;
   let duplicados = 0;
   let total = 0;
 
   if (nichoId === "geral") {
-    const ofertas = await buscarOfertasShopee(PAGINAS_GERAL, ITENS_POR_PAGINA);
+    const ofertas = await buscarOfertasShopee(usuarioId, PAGINAS_GERAL, ITENS_POR_PAGINA);
     total += ofertas.length;
-    const r = await inserirOfertas(ofertas, "geral");
+    const r = await inserirOfertas(usuarioId, ofertas, "geral");
     novos += r.novos;
     duplicados += r.duplicados;
   } else {
     const palavrasChave = NICHO_SHOPEE_KEYWORDS[nichoId] ?? [];
     for (const palavra of palavrasChave) {
-      const ofertas = await buscarOfertasShopee(PAGINAS_POR_PALAVRA_CHAVE, ITENS_POR_PAGINA, palavra);
+      const ofertas = await buscarOfertasShopee(usuarioId, PAGINAS_POR_PALAVRA_CHAVE, ITENS_POR_PAGINA, palavra);
       total += ofertas.length;
-      const r = await inserirOfertas(ofertas, nichoId);
+      const r = await inserirOfertas(usuarioId, ofertas, nichoId);
       novos += r.novos;
       duplicados += r.duplicados;
     }
   }
 
-  logger.info({ nicho: nichoId, novos, duplicados, total }, "captura de ofertas Shopee por nicho concluída");
+  logger.info({ usuarioId, nicho: nichoId, novos, duplicados, total }, "captura de ofertas Shopee por nicho concluída");
   return { novos, duplicados, total };
 }

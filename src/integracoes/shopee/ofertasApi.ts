@@ -7,8 +7,8 @@ function assinar(appId: string, timestamp: number, payload: string, secret: stri
   return createHash("sha256").update(`${appId}${timestamp}${payload}${secret}`).digest("hex");
 }
 
-async function chamarGraphQL<T>(query: string): Promise<T> {
-  const { appId, secret } = await obterShopeeConfigEfetiva();
+async function chamarGraphQL<T>(usuarioId: number, query: string): Promise<T> {
+  const { appId, secret } = await obterShopeeConfigEfetiva(usuarioId);
   const timestamp = Math.floor(Date.now() / 1000);
   const payload = JSON.stringify({ query });
   const signature = assinar(appId, timestamp, payload, secret);
@@ -65,6 +65,7 @@ interface RespostaProductOfferV2 {
  * confiável equivalente ao "category=MLB..." do ML (ver nichoKeywords.ts).
  */
 export async function buscarOfertasShopee(
+  usuarioId: number,
   paginas: number,
   itensPorPagina = 20,
   keyword?: string,
@@ -74,7 +75,7 @@ export async function buscarOfertasShopee(
 
   for (let pagina = 1; pagina <= paginas; pagina++) {
     const query = `query { productOfferV2(page: ${pagina}, limit: ${itensPorPagina}${filtroKeyword}) { nodes { itemId productName imageUrl productLink offerLink priceMin priceDiscountRate } } }`;
-    const dados = await chamarGraphQL<RespostaProductOfferV2>(query);
+    const dados = await chamarGraphQL<RespostaProductOfferV2>(usuarioId, query);
     const nodes = dados.productOfferV2?.nodes ?? [];
     if (nodes.length === 0) break;
 

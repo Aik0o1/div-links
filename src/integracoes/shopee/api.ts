@@ -15,8 +15,8 @@ function assinar(appId: string, timestamp: number, payload: string, secret: stri
   return createHash("sha256").update(`${appId}${timestamp}${payload}${secret}`).digest("hex");
 }
 
-async function chamarGraphQL<T>(query: string): Promise<T> {
-  const { appId, secret } = await obterShopeeConfigEfetiva();
+async function chamarGraphQL<T>(usuarioId: number, query: string): Promise<T> {
+  const { appId, secret } = await obterShopeeConfigEfetiva(usuarioId);
   const timestamp = Math.floor(Date.now() / 1000);
   const payload = JSON.stringify({ query });
   const signature = assinar(appId, timestamp, payload, secret);
@@ -44,9 +44,9 @@ interface RespostaGenerateShortLink {
   generateShortLink: { shortLink: string } | null;
 }
 
-export async function gerarLinkAfiliado(urlProduto: string): Promise<string> {
+export async function gerarLinkAfiliado(usuarioId: number, urlProduto: string): Promise<string> {
   const query = `mutation { generateShortLink(input: { originUrl: ${JSON.stringify(urlProduto)} }) { shortLink } }`;
-  const dados = await chamarGraphQL<RespostaGenerateShortLink>(query);
+  const dados = await chamarGraphQL<RespostaGenerateShortLink>(usuarioId, query);
 
   const link = dados.generateShortLink?.shortLink;
   if (!link) throw new Error(`Shopee não retornou link de afiliado pra "${urlProduto}"`);
@@ -77,13 +77,13 @@ const REGEX_SHOP_ITEM_ID_SIMPLES = /\/(\d+)\/(\d+)(?:[/?]|$)/;
  * ar, etc.) — cabe a quem chama decidir não publicar o produto sem imagem
  * confiável, nunca cair de volta pra imagem do post.
  */
-export async function buscarImagemOficialProduto(urlProduto: string): Promise<string | null> {
+export async function buscarImagemOficialProduto(usuarioId: number, urlProduto: string): Promise<string | null> {
   const resposta = await fetch(urlProduto, { redirect: "follow" });
   const match = resposta.url.match(REGEX_SHOP_ITEM_ID_SEO) ?? resposta.url.match(REGEX_SHOP_ITEM_ID_SIMPLES);
   if (!match) return null;
   const [, shopId, itemId] = match;
 
   const query = `query { productOfferV2(itemId: ${itemId}, shopId: ${shopId}, limit: 1) { nodes { imageUrl } } }`;
-  const dados = await chamarGraphQL<RespostaProductOfferPorItem>(query);
+  const dados = await chamarGraphQL<RespostaProductOfferPorItem>(usuarioId, query);
   return dados.productOfferV2?.nodes[0]?.imageUrl ?? null;
 }

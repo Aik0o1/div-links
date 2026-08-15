@@ -26,6 +26,7 @@ const NICHO_TESTE_SHOPEE = "shopee";
  * original do produto.
  */
 export async function processarProdutoDetectadoShopee(
+  usuarioId: number,
   produto: ProdutoCardShopeeDetectado,
   origem: OrigemGrupoMonitorado,
   grupoId?: string,
@@ -37,7 +38,7 @@ export async function processarProdutoDetectadoShopee(
 
   let imagemUrl: string | null;
   try {
-    imagemUrl = await buscarImagemOficialProduto(produto.urlBruta);
+    imagemUrl = await buscarImagemOficialProduto(usuarioId, produto.urlBruta);
   } catch (err) {
     logger.warn({ err, urlBruta: produto.urlBruta }, "falha ao buscar imagem oficial do produto Shopee, ignorado");
     return;
@@ -51,7 +52,7 @@ export async function processarProdutoDetectadoShopee(
   }
 
   try {
-    const resultado = await produtosRepo.inserirSeNovo({
+    const resultado = await produtosRepo.inserirSeNovo(usuarioId, {
       fonte: origem === "telegram" ? "telegram_shopee" : "whatsapp_shopee",
       urlOriginal: produto.urlBruta,
       titulo: produto.titulo,

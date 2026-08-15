@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import { requiredEvolutionConfig } from "../../config/env.js";
 import { chamarEvolutionApi } from "./cliente.js";
+import { nomeInstanciaEvolution } from "./instancia.js";
 
 // Mesmo limite conservador do Telegram (a Evolution/Baileys não documenta um
 // limite explícito de legenda, mas seguir o mais restrito evita truncar cupom).
@@ -8,11 +8,12 @@ const LIMITE_LEGENDA = 1024;
 
 /** @param grupoJid formato "xxxxxxxxxx-xxxxxxxxxx@g.us" (ver aba Status -> Grupos do WhatsApp) */
 export async function enviarFotoComLegenda(
+  usuarioId: number,
   fotoUrl: string,
   legenda: string,
   grupoJid: string,
 ): Promise<void> {
-  const { instancia } = requiredEvolutionConfig();
+  const instancia = nomeInstanciaEvolution(usuarioId);
 
   await chamarEvolutionApi(`/message/sendMedia/${instancia}`, {
     method: "POST",
@@ -25,8 +26,8 @@ export async function enviarFotoComLegenda(
   });
 }
 
-export async function enviarTexto(texto: string, grupoJid: string): Promise<void> {
-  const { instancia } = requiredEvolutionConfig();
+export async function enviarTexto(usuarioId: number, texto: string, grupoJid: string): Promise<void> {
+  const instancia = nomeInstanciaEvolution(usuarioId);
 
   await chamarEvolutionApi(`/message/sendText/${instancia}`, {
     method: "POST",
@@ -40,11 +41,12 @@ export async function enviarTexto(texto: string, grupoJid: string): Promise<void
  * (sem prefixo "data:"), então lemos o arquivo e codificamos direto.
  */
 export async function enviarFotoLocalComLegenda(
+  usuarioId: number,
   caminhoArquivo: string,
   legenda: string,
   grupoJid: string,
 ): Promise<void> {
-  const { instancia } = requiredEvolutionConfig();
+  const instancia = nomeInstanciaEvolution(usuarioId);
   const legendaCabe = legenda.length <= LIMITE_LEGENDA;
   const base64 = readFileSync(caminhoArquivo).toString("base64");
 
@@ -59,6 +61,6 @@ export async function enviarFotoLocalComLegenda(
   });
 
   if (!legendaCabe) {
-    await enviarTexto(legenda, grupoJid);
+    await enviarTexto(usuarioId, legenda, grupoJid);
   }
 }

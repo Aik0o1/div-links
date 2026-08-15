@@ -32,13 +32,14 @@ const GRUPOS_SEM_CHAMADA = new Set<string>([
  * — sempre busca a oficial via API, não precisa baixar nada aqui.
  */
 export async function processarMensagemGrupo(
+  usuarioId: number,
   texto: string,
   origem: OrigemGrupoMonitorado,
   nicho: string,
   grupoId?: string,
 ): Promise<void> {
   if (extrairCupons(texto).length > 0) {
-    await processarComoCupons(texto, grupoId);
+    await processarComoCupons(usuarioId, texto, grupoId);
     return;
   }
 
@@ -47,6 +48,7 @@ export async function processarMensagemGrupo(
   const produtoDetectado = extrairProdutoCard(texto);
   if (produtoDetectado) {
     await processarProdutoDetectado(
+      usuarioId,
       produtoDetectado.urlBruta,
       produtoDetectado.cupom,
       semChamada ? null : produtoDetectado.chamada,
@@ -61,6 +63,7 @@ export async function processarMensagemGrupo(
   const produtoShopee = extrairProdutoCardShopee(texto);
   if (produtoShopee) {
     await processarProdutoDetectadoShopee(
+      usuarioId,
       semChamada ? { ...produtoShopee, chamada: null } : produtoShopee,
       origem,
       grupoId,

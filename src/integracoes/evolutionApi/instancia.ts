@@ -1,14 +1,25 @@
 import { requiredEvolutionConfig, env } from "../../config/env.js";
 import { chamarEvolutionApi } from "./cliente.js";
 
+/**
+ * Nome de instância determinístico por tenant — sem coluna nova pra
+ * sincronizar (ver plano multi-tenant, item 6). A Evolution API (container
+ * único, self-hosted) já suporta múltiplas instâncias nativamente; cada
+ * tenant conecta o PRÓPRIO WhatsApp numa instância isolada com esse nome.
+ */
+export function nomeInstanciaEvolution(usuarioId: number): string {
+  return `tenant-${usuarioId}`;
+}
+
 export interface StatusInstancia {
   existe: boolean;
   conectado: boolean;
   estado: string | null;
 }
 
-export async function statusInstancia(): Promise<StatusInstancia> {
-  const { instancia } = requiredEvolutionConfig();
+export async function statusInstancia(usuarioId: number): Promise<StatusInstancia> {
+  requiredEvolutionConfig();
+  const instancia = nomeInstanciaEvolution(usuarioId);
   try {
     const resposta = await chamarEvolutionApi(`/instance/connectionState/${instancia}`);
     const estado = resposta?.instance?.state ?? null;
@@ -24,9 +35,10 @@ export interface QrCode {
 }
 
 /** Cria a instância se ainda não existir e devolve o QR code pra parear o WhatsApp. */
-export async function obterQrCode(): Promise<QrCode> {
-  const { instancia } = requiredEvolutionConfig();
-  const status = await statusInstancia();
+export async function obterQrCode(usuarioId: number): Promise<QrCode> {
+  requiredEvolutionConfig();
+  const instancia = nomeInstanciaEvolution(usuarioId);
+  const status = await statusInstancia(usuarioId);
 
   if (status.conectado) {
     return { base64: null, pairingCode: null };
@@ -56,8 +68,8 @@ export interface GrupoWhatsapp {
 }
 
 /** Lista os grupos que a instância conectada participa — usado pra descobrir o JID de um grupo. */
-export async function listarGrupos(): Promise<GrupoWhatsapp[]> {
-  const { instancia } = requiredEvolutionConfig();
+export async function listarGrupos(usuarioId: number): Promise<GrupoWhatsapp[]> {
+  const instancia = nomeInstanciaEvolution(usuarioId);
   const resposta = await chamarEvolutionApi(
     `/group/fetchAllGroups/${instancia}?getParticipants=false`,
   );
@@ -70,10 +82,13 @@ export async function listarGrupos(): Promise<GrupoWhatsapp[]> {
  * nova, inclusive de grupo) pro nosso painel — `host.docker.internal`
  * porque a Evolution roda dentro do Docker e o painel roda fora (npm run
  * ui), ver `extra_hosts` no docker-compose.yml. Idempotente, seguro de
- * chamar toda subida do servidor (só reafirma a config).
+ * chamar toda vez que o tenant conecta o WhatsApp (só reafirma a config).
+ * Antes rodava uma vez fixo em iniciar.ts (uma instância global); agora
+ * roda por tenant, dentro do fluxo de conectar WhatsApp (ver obterQrCode /
+ * rotas/whatsapp.ts).
  */
-export async function configurarWebhook(): Promise<void> {
-  const { instancia } = requiredEvolutionConfig();
+export async function configurarWebhook(usuarioId: number): Promise<void> {
+  const instancia = nomeInstanciaEvolution(usuarioId);
   const url = `http://host.docker.internal:${env.portaUi}/api/whatsapp/webhook`;
 
   await chamarEvolutionApi(`/webhook/set/${instancia}`, {

@@ -35,15 +35,18 @@ export interface CapturaManualEntrada {
  * direto como `urlAfiliado` no produto, pulando geração no disparo (ver
  * dispararProduto.ts: `produto.urlAfiliado ?? gerarLinkAfiliado(...)`).
  */
-export async function capturarProdutoManual(entrada: CapturaManualEntrada): Promise<ProdutoRow | null> {
-  const urlResolvida = await resolverUrlFinal(entrada.url);
-  let dados = await buscarDadosProduto(urlResolvida);
+export async function capturarProdutoManual(
+  usuarioId: number,
+  entrada: CapturaManualEntrada,
+): Promise<ProdutoRow | null> {
+  const urlResolvida = await resolverUrlFinal(usuarioId, entrada.url);
+  let dados = await buscarDadosProduto(usuarioId, urlResolvida);
   let urlFinalProduto = urlResolvida;
 
   if (!dados) {
-    const urlAchada = await buscarProdutoEmPerfilSocial(urlResolvida);
+    const urlAchada = await buscarProdutoEmPerfilSocial(usuarioId, urlResolvida);
     if (urlAchada) {
-      dados = await buscarDadosProduto(urlAchada);
+      dados = await buscarDadosProduto(usuarioId, urlAchada);
       if (dados) urlFinalProduto = urlAchada;
     }
   }
@@ -52,7 +55,7 @@ export async function capturarProdutoManual(entrada: CapturaManualEntrada): Prom
     throw new Error(`"${entrada.url}" não resolveu pra uma página de produto ML reconhecível`);
   }
 
-  const resultado = await produtosRepo.inserirSeNovo({
+  const resultado = await produtosRepo.inserirSeNovo(usuarioId, {
     fonte: "mercado_livre",
     urlOriginal: urlFinalProduto,
     urlAfiliado: entrada.url,

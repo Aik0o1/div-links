@@ -15,12 +15,12 @@ import type { GeradorDeLinkAfiliado } from "./tipos.js";
 // padrão da config da Shopee, não precisa reiniciar pra trocar.
 const geradorBase: GeradorDeLinkAfiliado = {
   plataforma: "mercado_livre",
-  async gerar(urlProduto: string): Promise<string> {
-    const config = await configuracoesRepo.obterMeliAfiliadoConfig();
+  async gerar(usuarioId: number, urlProduto: string): Promise<string> {
+    const config = await configuracoesRepo.obterMeliAfiliadoConfig(usuarioId);
     if (!config?.tag) {
       throw new Error("Tag de afiliado do Mercado Livre não configurada — configure na aba Config. Afiliados");
     }
-    return criarLinkOficial(urlProduto, config.tag);
+    return criarLinkOficial(usuarioId, urlProduto, config.tag);
   },
 };
 

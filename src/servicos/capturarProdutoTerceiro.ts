@@ -24,6 +24,7 @@ export type OrigemGrupoMonitorado = "telegram" | "whatsapp";
  * `textoOriginal` é usado só no fallback de perfil social (ver abaixo).
  */
 export async function processarProdutoDetectado(
+  usuarioId: number,
   urlBruta: string,
   cupom: string | null,
   chamada: string | null,
@@ -33,17 +34,17 @@ export async function processarProdutoDetectado(
   grupoId?: string,
 ): Promise<void> {
   try {
-    const urlResolvida = await resolverUrlFinal(urlBruta);
-    let dados = await buscarDadosProduto(urlResolvida);
+    const urlResolvida = await resolverUrlFinal(usuarioId, urlBruta);
+    let dados = await buscarDadosProduto(usuarioId, urlResolvida);
     let urlFinalProduto = urlResolvida;
 
     if (!dados) {
       // Link de afiliado (meli.la) do "Gerador de produtos recomendados" não
       // aponta pro produto — resolve pro perfil social de quem postou, com o
       // produto original em destaque (ver buscarProdutoEmPerfilSocial).
-      const urlAchada = await buscarProdutoEmPerfilSocial(urlResolvida);
+      const urlAchada = await buscarProdutoEmPerfilSocial(usuarioId, urlResolvida);
       if (urlAchada) {
-        dados = await buscarDadosProduto(urlAchada);
+        dados = await buscarDadosProduto(usuarioId, urlAchada);
         if (dados) urlFinalProduto = urlAchada;
       }
     }
@@ -75,7 +76,7 @@ export async function processarProdutoDetectado(
     const precoPromocional = precosDoPost ? precosDoPost.precoPromocional : dados.precoPromocional;
     const precoOriginal = dados.precoOriginal ?? precosDoPost?.precoOriginal ?? undefined;
 
-    const resultado = await produtosRepo.inserirSeNovo({
+    const resultado = await produtosRepo.inserirSeNovo(usuarioId, {
       fonte: origem === "telegram" ? "telegram_terceiros" : "whatsapp_terceiros",
       urlOriginal: urlFinalProduto,
       titulo: dados.titulo,

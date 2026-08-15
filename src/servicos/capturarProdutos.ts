@@ -21,6 +21,7 @@ export interface ResultadoCaptura {
 }
 
 async function processarOfertas(
+  usuarioId: number,
   ofertas: ProdutoBruto[],
   nichoId: string,
   descontoMinimo: number,
@@ -39,7 +40,7 @@ async function processarOfertas(
       continue;
     }
 
-    const resultado = await produtosRepo.inserirSeNovo({
+    const resultado = await produtosRepo.inserirSeNovo(usuarioId, {
       fonte: oferta.fonte,
       urlOriginal: oferta.urlOriginal,
       titulo: dados.titulo,
@@ -62,20 +63,21 @@ async function processarOfertas(
  * ficar correta quando chamada várias vezes em loop).
  */
 async function capturarNichoML(
+  usuarioId: number,
   nicho: NichoRow,
   descontoMinimo: number,
   contadores: { novos: number; duplicados: number; ignorados: number },
 ): Promise<void> {
   if (nicho.categoriaIds.length === 0) {
     // Nicho sem categoria (ex.: "geral") -> busca a aba de Ofertas sem filtro, com mais páginas.
-    const ofertas = await buscarOfertasMercadoLivre(PAGINAS_NICHO_GERAL);
-    await processarOfertas(ofertas, nicho.id, descontoMinimo, contadores);
+    const ofertas = await buscarOfertasMercadoLivre(usuarioId, PAGINAS_NICHO_GERAL);
+    await processarOfertas(usuarioId, ofertas, nicho.id, descontoMinimo, contadores);
     return;
   }
 
   for (const categoriaId of nicho.categoriaIds) {
-    const ofertas = await buscarOfertasMercadoLivre(PAGINAS_POR_CATEGORIA, categoriaId);
-    await processarOfertas(ofertas, nicho.id, descontoMinimo, contadores);
+    const ofertas = await buscarOfertasMercadoLivre(usuarioId, PAGINAS_POR_CATEGORIA, categoriaId);
+    await processarOfertas(usuarioId, ofertas, nicho.id, descontoMinimo, contadores);
   }
 }
 
@@ -86,18 +88,18 @@ async function capturarNichoML(
  * zero). Usada pelo `npm run capturar` (CLI) e mantida como está — a captura
  * por aba (abaixo) é escopada, não passa por aqui.
  */
-export async function capturarProdutos(): Promise<ResultadoCaptura> {
-  const nichos = await nichosRepo.ativos();
-  const descontoMinimo = await configuracoesRepo.obterDescontoMinimo();
+export async function capturarProdutos(usuarioId: number): Promise<ResultadoCaptura> {
+  const nichos = await nichosRepo.ativos(usuarioId);
+  const descontoMinimo = await configuracoesRepo.obterDescontoMinimo(usuarioId);
 
-  await produtosRepo.removerTodos();
+  await produtosRepo.removerTodos(usuarioId);
 
   const contadores = { novos: 0, duplicados: 0, ignorados: 0 };
   for (const nicho of nichos) {
-    await capturarNichoML(nicho, descontoMinimo, contadores);
+    await capturarNichoML(usuarioId, nicho, descontoMinimo, contadores);
   }
 
-  logger.info(contadores, "captura concluída (por categoria + geral)");
+  logger.info({ usuarioId, ...contadores }, "captura concluída (por categoria + geral)");
   return { ...contadores, total: contadores.novos + contadores.duplicados + contadores.ignorados };
 }
 
@@ -105,18 +107,18 @@ export async function capturarProdutos(): Promise<ResultadoCaptura> {
  * Captura só UM nicho (aba Produtos) — zera só os produtos daquele nicho +
  * fonte ML antes de recapturar (não mexe em outros nichos nem na Shopee).
  */
-export async function capturarProdutosPorNicho(nichoId: string): Promise<ResultadoCaptura> {
-  const nicho = await nichosRepo.buscarPorId(nichoId);
+export async function capturarProdutosPorNicho(usuarioId: number, nichoId: string): Promise<ResultadoCaptura> {
+  const nicho = await nichosRepo.buscarPorId(usuarioId, nichoId);
   if (!nicho || !nicho.ativo) {
     throw new Error(`Nicho "${nichoId}" não encontrado ou inativo`);
   }
 
-  const descontoMinimo = await configuracoesRepo.obterDescontoMinimo();
-  await produtosRepo.removerPorNichoEFonte(nichoId, "mercado_livre");
+  const descontoMinimo = await configuracoesRepo.obterDescontoMinimo(usuarioId);
+  await produtosRepo.removerPorNichoEFonte(usuarioId, nichoId, "mercado_livre");
 
   const contadores = { novos: 0, duplicados: 0, ignorados: 0 };
-  await capturarNichoML(nicho, descontoMinimo, contadores);
+  await capturarNichoML(usuarioId, nicho, descontoMinimo, contadores);
 
-  logger.info({ nicho: nichoId, ...contadores }, "captura por nicho concluída (Mercado Livre)");
+  logger.info({ usuarioId, nicho: nichoId, ...contadores }, "captura por nicho concluída (Mercado Livre)");
   return { ...contadores, total: contadores.novos + contadores.duplicados + contadores.ignorados };
 }

@@ -1,4 +1,4 @@
 export interface GeradorDeLinkAfiliado {
   plataforma: string;
-  gerar(urlProduto: string): Promise<string>;
+  gerar(usuarioId: number, urlProduto: string): Promise<string>;
 }

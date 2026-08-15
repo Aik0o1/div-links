@@ -104,11 +104,11 @@ function grupoMonitoradoStatus(
   return permitidos.includes(produto.grupoOrigemId) ? "bypass_nicho" : "bloqueado";
 }
 
-export async function canaisElegiveis(produtoId: number): Promise<CanalComElegibilidade[]> {
-  const produto = await produtosRepo.buscarPorId(produtoId);
+export async function canaisElegiveis(usuarioId: number, produtoId: number): Promise<CanalComElegibilidade[]> {
+  const produto = await produtosRepo.buscarPorId(usuarioId, produtoId);
   if (!produto) throw new Error(`Produto ${produtoId} não encontrado`);
 
-  const canais = await canaisRepo.listar();
+  const canais = await canaisRepo.listar(usuarioId);
   const desconto = calcularDesconto(produto.precoOriginal, produto.precoPromocional);
 
   const resultado: CanalComElegibilidade[] = [];
@@ -177,7 +177,7 @@ export async function canaisElegiveis(produtoId: number): Promise<CanalComElegib
 }
 
 /** Acha o próximo produto capturado elegível pras regras do canal — grupo monitorado sempre primeiro, resto intercalado entre ML/Shopee (ver comentário abaixo). */
-export async function proximoProdutoElegivel(canal: CanalRow): Promise<ProdutoRow | null> {
+export async function proximoProdutoElegivel(usuarioId: number, canal: CanalRow): Promise<ProdutoRow | null> {
   // Canal sem categorias definidas = "geral" = aceita produto de qualquer
   // nicho (ver nichoElegivel acima) — passa `null` pra não filtrar por
   // nicho nenhum na consulta.
@@ -188,7 +188,7 @@ export async function proximoProdutoElegivel(canal: CanalRow): Promise<ProdutoRo
   // grupo permitido mesmo fora de nichosAceitos) — a outra metade do bypass
   // (excluir grupo BLOQUEADO que bateu no nicho por coincidência) é feita
   // no loop abaixo, em JS, já que SQL só alarga, não estreita esse caso.
-  const candidatos = await produtosRepo.listarPorNichos(nichosAceitos, "capturado", canal.gruposMonitoradosPermitidos);
+  const candidatos = await produtosRepo.listarPorNichos(usuarioId, nichosAceitos, "capturado", canal.gruposMonitoradosPermitidos);
 
   const elegiveis: ProdutoRow[] = [];
   for (const produto of candidatos) {
@@ -212,19 +212,19 @@ export async function proximoProdutoElegivel(canal: CanalRow): Promise<ProdutoRo
   // inteira até esgotar, enquanto a outra nunca sai (bug real: leva de
   // Shopee capturada minutos antes do ML travando o ML por horas, já que o
   // canal só dispara 1 produto a cada `intervaloMinimoMinutos`).
-  const ultimaPlataforma = await configuracoesRepo.obterUltimaPlataformaBulkEnviada();
+  const ultimaPlataforma = await configuracoesRepo.obterUltimaPlataformaBulkEnviada(usuarioId);
   const plataformaDesejada = ultimaPlataforma === "mercado_livre" ? "shopee" : "mercado_livre";
 
   const escolhido = elegiveis.find((p) => plataformaAfiliado(p.fonte) === plataformaDesejada) ?? primeiro;
-  await configuracoesRepo.definirUltimaPlataformaBulkEnviada(plataformaAfiliado(escolhido.fonte));
+  await configuracoesRepo.definirUltimaPlataformaBulkEnviada(usuarioId, plataformaAfiliado(escolhido.fonte));
   return escolhido;
 }
 
-export async function dispararParaCanal(produtoId: number, canalId: number): Promise<void> {
-  const produto = await produtosRepo.buscarPorId(produtoId);
+export async function dispararParaCanal(usuarioId: number, produtoId: number, canalId: number): Promise<void> {
+  const produto = await produtosRepo.buscarPorId(usuarioId, produtoId);
   if (!produto) throw new Error(`Produto ${produtoId} não encontrado`);
 
-  const canal = await canaisRepo.buscarPorId(canalId);
+  const canal = await canaisRepo.buscarPorId(usuarioId, canalId);
   if (!canal) throw new Error(`Canal ${canalId} não encontrado`);
 
   if (canal.tipo !== "telegram" && canal.tipo !== "whatsapp") {
@@ -237,15 +237,15 @@ export async function dispararParaCanal(produtoId: number, canalId: number): Pro
     // conseguir ser disparado (mesmo bug do produto rejeitado pelo programa
     // de afiliados, causa raiz diferente — aqui o `throw` acontece antes do
     // try/catch que registra falha em disparos, então nunca contava).
-    await produtosRepo.atualizarStatus(produtoId, "falhou");
+    await produtosRepo.atualizarStatus(usuarioId, produtoId, "falhou");
     throw new Error("Produto sem título ou imagem, não é possível disparar — marcado como falhou");
   }
 
   let chamada = produto.chamada ?? undefined;
-  if (!chamada && (await configuracoesRepo.obterChamadaIAAtiva())) {
+  if (!chamada && (await configuracoesRepo.obterChamadaIAAtiva(usuarioId))) {
     try {
       chamada = await gerarChamada(produto.titulo);
-      await produtosRepo.atualizarChamada(produtoId, chamada);
+      await produtosRepo.atualizarChamada(usuarioId, produtoId, chamada);
     } catch (err) {
       logger.warn({ err, produtoId }, "falha ao gerar chamada via Ollama, seguindo sem ela");
     }
@@ -257,7 +257,7 @@ export async function dispararParaCanal(produtoId: number, canalId: number): Pro
     // de gerar de novo (evita chamada redundante à API e o link possivelmente
     // ficar diferente do que já foi guardado).
     const linkAfiliado =
-      produto.urlAfiliado ?? (await gerarLinkAfiliado(plataformaAfiliado(produto.fonte), produto.urlOriginal));
+      produto.urlAfiliado ?? (await gerarLinkAfiliado(usuarioId, plataformaAfiliado(produto.fonte), produto.urlOriginal));
 
     // O link de "resgatar cupom" mostrado no produto NUNCA é o link de
     // ativação raspado do post do grupo monitorado (produto.linkCupom) — esse
@@ -266,7 +266,7 @@ export async function dispararParaCanal(produtoId: number, canalId: number): Pro
     // explícita dele), mesmo sendo genérico e não específico do produto.
     const linkCupom =
       produto.cupom && FONTES_SHOPEE.has(produto.fonte)
-        ? ((await configuracoesRepo.obterLinkCupomShopeeFixo()) ?? undefined)
+        ? ((await configuracoesRepo.obterLinkCupomShopeeFixo(usuarioId)) ?? undefined)
         : undefined;
 
     const legenda = gerarLegenda({
@@ -282,28 +282,29 @@ export async function dispararParaCanal(produtoId: number, canalId: number): Pro
 
     // Imagem de produto Shopee vem do post (baixada localmente, ver
     // capturarProdutoShopee.ts), não é uma URL pública — usa a variante de
-    // envio de arquivo local nesse caso.
+    // envio de arquivo local nesse caso. WhatsApp (Evolution, instância por
+    // tenant) precisa de usuarioId; Telegram é um bot de plataforma
+    // compartilhado entre tenants (ver comentário em integracoes/telegram/bot.ts),
+    // por isso as duas famílias de função têm assinatura diferente aqui.
     const ehImagemLocal = !/^https?:\/\//i.test(produto.imagemUrl);
-    const enviar =
-      canal.tipo === "telegram"
-        ? ehImagemLocal
-          ? enviarFotoLocalTelegram
-          : enviarFotoTelegram
-        : ehImagemLocal
-          ? enviarFotoLocalWhatsapp
-          : enviarFotoWhatsapp;
-    await enviar(produto.imagemUrl, legenda, canal.identificadorGrupo);
+    if (canal.tipo === "telegram") {
+      const enviar = ehImagemLocal ? enviarFotoLocalTelegram : enviarFotoTelegram;
+      await enviar(produto.imagemUrl, legenda, canal.identificadorGrupo);
+    } else {
+      const enviar = ehImagemLocal ? enviarFotoLocalWhatsapp : enviarFotoWhatsapp;
+      await enviar(usuarioId, produto.imagemUrl, legenda, canal.identificadorGrupo);
+    }
 
-    await disparosRepo.registrar(produtoId, canalId, "enviado");
-    await produtosRepo.atualizarStatus(produtoId, "enviado", linkAfiliado);
+    await disparosRepo.registrar(usuarioId, produtoId, canalId, "enviado");
+    await produtosRepo.atualizarStatus(usuarioId, produtoId, "enviado", linkAfiliado);
   } catch (err) {
-    await disparosRepo.registrar(produtoId, canalId, "falhou");
+    await disparosRepo.registrar(usuarioId, produtoId, canalId, "falhou");
 
-    const falhas = await disparosRepo.contarFalhas(produtoId);
+    const falhas = await disparosRepo.contarFalhas(usuarioId, produtoId);
     if (falhas >= LIMITE_FALHAS) {
-      await produtosRepo.atualizarStatus(produtoId, "falhou");
+      await produtosRepo.atualizarStatus(usuarioId, produtoId, "falhou");
       logger.warn(
-        { produtoId, falhas },
+        { usuarioId, produtoId, falhas },
         "produto desistido após falhas repetidas — não bloqueia mais a fila de disparo",
       );
     }

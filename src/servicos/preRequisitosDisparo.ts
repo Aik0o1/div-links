@@ -28,8 +28,8 @@ function aceitaOrigem(canal: canaisRepo.CanalRow, selecoes: string[]): boolean {
  * (ex.: não exige Shopee configurada se nenhum canal ativo aceita produto
  * dessa origem).
  */
-export async function avaliarPreRequisitosDisparo(): Promise<ItemPreRequisito[]> {
-  const canais = await canaisRepo.listar();
+export async function avaliarPreRequisitosDisparo(usuarioId: number): Promise<ItemPreRequisito[]> {
+  const canais = await canaisRepo.listar(usuarioId);
   const ativos = canais.filter((c) => c.ativo);
 
   const temCanalWhatsapp = ativos.some((c) => c.tipo === "whatsapp");
@@ -39,13 +39,13 @@ export async function avaliarPreRequisitosDisparo(): Promise<ItemPreRequisito[]>
 
   const [whatsappStatus, meliOk] = await Promise.all([
     temCanalWhatsapp
-      ? statusInstancia().catch(() => ({ conectado: false }))
+      ? statusInstancia(usuarioId).catch(() => ({ conectado: false }))
       : Promise.resolve({ conectado: false }),
     // Desde 2026-08-13 a geração de link/captura do ML usa cookie de sessão
     // + HTTP puro, não mais Chrome (ver meliHttp.ts) — o pré-requisito real
     // é ter tag + cookie configurados, não uma janela de Chrome aberta.
     temCanalML
-      ? Promise.all([obterMeliAfiliadoConfig(), obterMeliSessionCookie()]).then(
+      ? Promise.all([obterMeliAfiliadoConfig(usuarioId), obterMeliSessionCookie(usuarioId)]).then(
           ([config, cookie]) => !!config?.tag && !!cookie,
         )
       : Promise.resolve(false),
@@ -96,8 +96,11 @@ export async function avaliarPreRequisitosDisparo(): Promise<ItemPreRequisito[]>
   }
 
   if (temCanalShopee) {
-    const configBanco = await obterShopeeConfig();
-    const shopeeOk = !!(configBanco?.appId && configBanco?.secret) || !!(env.shopee.appId && env.shopee.secret);
+    const configBanco = await obterShopeeConfig(usuarioId);
+    // Sem fallback pro .env desde a transformação multi-tenant (ver
+    // integracoes/shopee/config.ts) — cada tenant precisa configurar a
+    // própria Shopee, sem vazar credencial/comissão de outro tenant.
+    const shopeeOk = !!(configBanco?.appId && configBanco?.secret);
     itens.push({
       id: "shopee-configurada",
       label: "Shopee configurada (App ID + Secret)",

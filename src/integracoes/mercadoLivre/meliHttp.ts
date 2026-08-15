@@ -12,8 +12,8 @@ export class SessaoMeliExpiradaError extends Error {
   }
 }
 
-async function cookieObrigatorio(): Promise<string> {
-  const cookie = await configuracoesRepo.obterMeliSessionCookie();
+async function cookieObrigatorio(usuarioId: number): Promise<string> {
+  const cookie = await configuracoesRepo.obterMeliSessionCookie(usuarioId);
   if (!cookie) throw new SessaoMeliExpiradaError();
   return cookie;
 }
@@ -32,8 +32,8 @@ async function cookieObrigatorio(): Promise<string> {
  * quando expira) e converte num erro claro, em vez de deixar o chamador
  * tentar extrair produto de HTML de challenge.
  */
-export async function buscarPaginaMeli(url: string): Promise<{ html: string; urlFinal: string }> {
-  const cookie = await cookieObrigatorio();
+export async function buscarPaginaMeli(usuarioId: number, url: string): Promise<{ html: string; urlFinal: string }> {
+  const cookie = await cookieObrigatorio(usuarioId);
 
   const resposta = await fetch(url, {
     redirect: "follow",
@@ -76,8 +76,8 @@ interface RespostaCreateLink {
  * essa função existir: link direto chegou a sair sem contar como afiliado
  * em produção, relatado pelo usuário 2026-08-14).
  */
-export async function criarLinkOficial(urlProduto: string, tag: string): Promise<string> {
-  const cookie = await cookieObrigatorio();
+export async function criarLinkOficial(usuarioId: number, urlProduto: string, tag: string): Promise<string> {
+  const cookie = await cookieObrigatorio(usuarioId);
 
   const paginaLinkbuilder = await fetch("https://www.mercadolivre.com.br/afiliados/linkbuilder", {
     redirect: "follow",

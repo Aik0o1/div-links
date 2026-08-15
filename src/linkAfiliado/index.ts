@@ -8,6 +8,7 @@ const geradores: Record<string, GeradorDeLinkAfiliado> = {
 };
 
 export function gerarLinkAfiliado(
+  usuarioId: number,
   plataforma: string,
   urlProduto: string,
 ): Promise<string> {
@@ -15,7 +16,7 @@ export function gerarLinkAfiliado(
   if (!gerador) {
     throw new Error(`Nenhum gerador de link de afiliado para "${plataforma}"`);
   }
-  return gerador.gerar(urlProduto);
+  return gerador.gerar(usuarioId, urlProduto);
 }
 
 export type { GeradorDeLinkAfiliado } from "./tipos.js";

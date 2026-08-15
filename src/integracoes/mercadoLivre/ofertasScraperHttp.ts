@@ -35,12 +35,12 @@ function limparUrl(url: string): string {
   }
 }
 
-async function extrairOfertasDaPagina(numeroPagina: number, categoriaId?: string): Promise<OfertaExtraida[]> {
+async function extrairOfertasDaPagina(usuarioId: number, numeroPagina: number, categoriaId?: string): Promise<OfertaExtraida[]> {
   const url = new URL(OFERTAS_URL);
   url.searchParams.set("page", String(numeroPagina));
   if (categoriaId) url.searchParams.set("category", categoriaId);
 
-  const { html } = await buscarPaginaMeli(url.toString());
+  const { html } = await buscarPaginaMeli(usuarioId, url.toString());
   const $ = cheerio.load(html);
 
   return $(".poly-card")
@@ -62,11 +62,11 @@ async function extrairOfertasDaPagina(numeroPagina: number, categoriaId?: string
 }
 
 /** Se categoriaId for informado, busca só ofertas dessa categoria real do ML (ex: "MLB1246"). */
-export async function buscarOfertasMercadoLivre(paginas: number, categoriaId?: string): Promise<ProdutoBruto[]> {
+export async function buscarOfertasMercadoLivre(usuarioId: number, paginas: number, categoriaId?: string): Promise<ProdutoBruto[]> {
   const todasOfertas: OfertaExtraida[] = [];
 
   for (let p = 1; p <= paginas; p++) {
-    const ofertas = await extrairOfertasDaPagina(p, categoriaId);
+    const ofertas = await extrairOfertasDaPagina(usuarioId, p, categoriaId);
     todasOfertas.push(...ofertas);
   }
 

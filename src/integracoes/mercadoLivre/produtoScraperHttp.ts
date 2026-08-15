@@ -18,8 +18,8 @@ import { buscarPaginaMeli } from "./meliHttp.js";
  * — precisa do cookie de sessão (ver meliHttp.ts) porque o ML bloqueia
  * requisição sem sessão logada como "tráfego suspeito".
  */
-export async function resolverUrlFinal(urlBruta: string): Promise<string> {
-  const { urlFinal } = await buscarPaginaMeli(urlBruta);
+export async function resolverUrlFinal(usuarioId: number, urlBruta: string): Promise<string> {
+  const { urlFinal } = await buscarPaginaMeli(usuarioId, urlBruta);
   return urlFinal;
 }
 
@@ -37,8 +37,8 @@ export interface DadosProdutoML {
  * página de produto reconhecível (ex.: link resolveu pra uma
  * categoria/listagem, não um produto específico).
  */
-export async function buscarDadosProduto(url: string): Promise<DadosProdutoML | null> {
-  const { html } = await buscarPaginaMeli(url);
+export async function buscarDadosProduto(usuarioId: number, url: string): Promise<DadosProdutoML | null> {
+  const { html } = await buscarPaginaMeli(usuarioId, url);
   const $ = cheerio.load(html);
 
   const titulo = $("h1.ui-pdp-title").first().text().trim();
@@ -90,8 +90,8 @@ function limparUrlProduto(url: string): string {
  * destaque no topo. O card do produto original é identificável de forma
  * exata: seu link contém `c_id=/home/card-featured/element`.
  */
-export async function buscarProdutoEmPerfilSocial(urlPerfil: string): Promise<string | null> {
-  const { html } = await buscarPaginaMeli(urlPerfil);
+export async function buscarProdutoEmPerfilSocial(usuarioId: number, urlPerfil: string): Promise<string | null> {
+  const { html } = await buscarPaginaMeli(usuarioId, urlPerfil);
   const $ = cheerio.load(html);
 
   const href = $('a[href*="c_id=/home/card-featured/element"]').first().attr("href");

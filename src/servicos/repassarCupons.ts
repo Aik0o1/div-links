@@ -27,8 +27,8 @@ const BANNER_CUPOM_SHOPEE = path.join(RAIZ_PROJETO, "src", "assets", "imgs", "sh
  * (bug real: cupom chegou 2min depois do último disparo pro canal, que
  * exige 5min de intervalo — nunca foi reenviado).
  */
-export async function processarMensagem(texto: string, grupoOrigemId?: string): Promise<void> {
-  const cupom = await cuponsRepo.inserirSeNovo(texto, grupoOrigemId);
+export async function processarMensagem(usuarioId: number, texto: string, grupoOrigemId?: string): Promise<void> {
+  const cupom = await cuponsRepo.inserirSeNovo(usuarioId, texto, grupoOrigemId);
   if (!cupom) {
     logger.debug("mensagem de cupom duplicada, ignorada");
     return;
@@ -58,8 +58,8 @@ export interface ResultadoCupomPendente {
  * não há nenhum cupom pendente parseável pra esse canal agora (aí o
  * agendador segue pro fluxo normal de produtos).
  */
-export async function dispararCupomPendente(canal: CanalRow): Promise<ResultadoCupomPendente | null> {
-  const candidatos = await cuponsRepo.listarPendentesParaCanal(canal.id);
+export async function dispararCupomPendente(usuarioId: number, canal: CanalRow): Promise<ResultadoCupomPendente | null> {
+  const candidatos = await cuponsRepo.listarPendentesParaCanal(usuarioId, canal.id);
   if (candidatos.length === 0) return null;
 
   // Link fixo é config específica do Mercado Livre (lista de recomendações)
@@ -67,7 +67,7 @@ export async function dispararCupomPendente(canal: CanalRow): Promise<ResultadoC
   // que veio no post (ver detectarPlataformaCupom). Por isso não busca/exige
   // aqui em cima mais: um cupom da Shopee não pode ficar bloqueado só porque
   // o link fixo do ML não foi configurado.
-  const linkFixo = await configuracoesRepo.obterLinkCupomFixo();
+  const linkFixo = await configuracoesRepo.obterLinkCupomFixo(usuarioId);
 
   for (const cupom of candidatos) {
     const cuponsExtraidos = extrairCupons(cupom.texto);
@@ -86,7 +86,7 @@ export async function dispararCupomPendente(canal: CanalRow): Promise<ResultadoC
     let link: string;
     if (plataforma === "shopee" && urlShopee) {
       try {
-        link = await gerarLinkAfiliadoShopee(urlShopee);
+        link = await gerarLinkAfiliadoShopee(usuarioId, urlShopee);
       } catch (err) {
         logger.error(
           { err, cupomId: cupom.id },
@@ -102,13 +102,16 @@ export async function dispararCupomPendente(canal: CanalRow): Promise<ResultadoC
     const legenda = formatarLegendaCupons(cuponsExtraidos, link, plataforma);
     const banner = plataforma === "shopee" ? BANNER_CUPOM_SHOPEE : BANNER_CUPOM_ML;
     try {
-      const enviar = canal.tipo === "telegram" ? enviarFotoLocalTelegram : enviarFotoLocalWhatsapp;
-      await enviar(banner, legenda, canal.identificadorGrupo);
-      await cuponsRepo.registrarDisparo(cupom.id, canal.id, "enviado");
+      if (canal.tipo === "telegram") {
+        await enviarFotoLocalTelegram(banner, legenda, canal.identificadorGrupo);
+      } else {
+        await enviarFotoLocalWhatsapp(usuarioId, banner, legenda, canal.identificadorGrupo);
+      }
+      await cuponsRepo.registrarDisparo(usuarioId, cupom.id, canal.id, "enviado");
       return { cupomId: cupom.id, status: "enviado" };
     } catch (err) {
       logger.error({ err, canalId: canal.id, cupomId: cupom.id }, "falha ao repassar cupom pro canal");
-      await cuponsRepo.registrarDisparo(cupom.id, canal.id, "falhou");
+      await cuponsRepo.registrarDisparo(usuarioId, cupom.id, canal.id, "falhou");
       return { cupomId: cupom.id, status: "falhou" };
     }
   }
