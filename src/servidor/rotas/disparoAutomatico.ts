@@ -4,12 +4,12 @@ import { avaliarPreRequisitosDisparo } from "../../servicos/preRequisitosDisparo
 
 export const rotaDisparoAutomatico = Router();
 
-rotaDisparoAutomatico.get("/", async (_req, res) => {
-  res.json({ ativo: await configuracoesRepo.obterDisparoAutomaticoAtivo() });
+rotaDisparoAutomatico.get("/", async (req, res) => {
+  res.json({ ativo: await configuracoesRepo.obterDisparoAutomaticoAtivo(req.usuarioId) });
 });
 
-rotaDisparoAutomatico.post("/iniciar", async (_req, res) => {
-  const itens = await avaliarPreRequisitosDisparo();
+rotaDisparoAutomatico.post("/iniciar", async (req, res) => {
+  const itens = await avaliarPreRequisitosDisparo(req.usuarioId);
   const pendentes = itens.filter((i) => i.obrigatorio && !i.ok);
   if (pendentes.length > 0) {
     res.status(400).json({
@@ -18,11 +18,11 @@ rotaDisparoAutomatico.post("/iniciar", async (_req, res) => {
     });
     return;
   }
-  await configuracoesRepo.definirDisparoAutomaticoAtivo(true);
+  await configuracoesRepo.definirDisparoAutomaticoAtivo(req.usuarioId, true);
   res.json({ ativo: true });
 });
 
-rotaDisparoAutomatico.post("/pausar", async (_req, res) => {
-  await configuracoesRepo.definirDisparoAutomaticoAtivo(false);
+rotaDisparoAutomatico.post("/pausar", async (req, res) => {
+  await configuracoesRepo.definirDisparoAutomaticoAtivo(req.usuarioId, false);
   res.json({ ativo: false });
 });

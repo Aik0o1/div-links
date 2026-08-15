@@ -16,7 +16,7 @@ export const rotaStatus = Router();
 const RAIZ_PROJETO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const PERFIL_CHROME_ML = path.join(RAIZ_PROJETO, ".playwright-ml-session");
 
-rotaStatus.get("/", async (_req, res) => {
+rotaStatus.get("/", async (req, res) => {
   const [db, redis, chrome, whatsapp, telegramListener, meliCookie] = await Promise.all([
     pool
       .query("SELECT 1")
@@ -27,9 +27,9 @@ rotaStatus.get("/", async (_req, res) => {
       .then(() => true)
       .catch(() => false),
     chromeConectado(),
-    statusInstancia().catch(() => ({ existe: false, conectado: false, estado: null })),
-    statusListener().catch(() => ({ autenticado: false, grupoMonitorado: null })),
-    configuracoesRepo.obterMeliSessionCookie().then((c) => !!c),
+    statusInstancia(req.usuarioId).catch(() => ({ existe: false, conectado: false, estado: null })),
+    statusListener(req.usuarioId).catch(() => ({ autenticado: false, grupoMonitorado: null })),
+    configuracoesRepo.obterMeliSessionCookie(req.usuarioId).then((c) => !!c),
   ]);
 
   res.json({

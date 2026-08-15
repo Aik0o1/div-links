@@ -5,17 +5,17 @@ import { avaliarPreRequisitosDisparo } from "../../servicos/preRequisitosDisparo
 
 export const rotaDashboard = Router();
 
-rotaDashboard.get("/pre-requisitos", async (_req, res) => {
-  res.json({ itens: await avaliarPreRequisitosDisparo() });
+rotaDashboard.get("/pre-requisitos", async (req, res) => {
+  res.json({ itens: await avaliarPreRequisitosDisparo(req.usuarioId) });
 });
 
-rotaDashboard.get("/metricas", async (_req, res) => {
+rotaDashboard.get("/metricas", async (req, res) => {
   const [enviadosHoje, falhasHoje, capturadosHoje, pendentes, porHora] = await Promise.all([
-    disparosRepo.contarHoje("enviado"),
-    disparosRepo.contarHoje("falhou"),
-    produtosRepo.contarCapturadosHoje(),
-    produtosRepo.contarPendentes(),
-    disparosRepo.porHoraHoje(),
+    disparosRepo.contarHoje(req.usuarioId, "enviado"),
+    disparosRepo.contarHoje(req.usuarioId, "falhou"),
+    produtosRepo.contarCapturadosHoje(req.usuarioId),
+    produtosRepo.contarPendentes(req.usuarioId),
+    disparosRepo.porHoraHoje(req.usuarioId),
   ]);
 
   res.json({

@@ -3,8 +3,8 @@ import * as canaisRepo from "../../repositorios/canais.js";
 
 export const rotaCanais = Router();
 
-rotaCanais.get("/", async (_req, res) => {
-  res.json(await canaisRepo.listar());
+rotaCanais.get("/", async (req, res) => {
+  res.json(await canaisRepo.listar(req.usuarioId));
 });
 
 rotaCanais.post("/", async (req, res) => {
@@ -22,7 +22,7 @@ rotaCanais.post("/", async (req, res) => {
     res.status(400).json({ erro: "tipo e identificadorGrupo são obrigatórios" });
     return;
   }
-  const canal = await canaisRepo.criar({
+  const canal = await canaisRepo.criar(req.usuarioId, {
     nome,
     tipo,
     identificadorGrupo,
@@ -36,7 +36,7 @@ rotaCanais.post("/", async (req, res) => {
 });
 
 rotaCanais.put("/:id", async (req, res) => {
-  const canal = await canaisRepo.atualizar(Number(req.params.id), req.body);
+  const canal = await canaisRepo.atualizar(req.usuarioId, Number(req.params.id), req.body);
   if (!canal) {
     res.status(404).json({ erro: "canal não encontrado" });
     return;
@@ -46,7 +46,7 @@ rotaCanais.put("/:id", async (req, res) => {
 
 rotaCanais.delete("/:id", async (req, res) => {
   try {
-    await canaisRepo.remover(Number(req.params.id));
+    await canaisRepo.remover(req.usuarioId, Number(req.params.id));
     res.status(204).end();
   } catch (err: any) {
     res.status(409).json({ erro: `Não foi possível remover o canal: ${err.message}` });

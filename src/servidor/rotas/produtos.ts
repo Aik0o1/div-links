@@ -26,7 +26,7 @@ function paraExibicao(produto: ProdutoRow): ProdutoRow {
 
 rotaProdutos.get("/", async (req, res) => {
   const { status, nicho, fonte } = req.query;
-  const produtos = await produtosRepo.listar({
+  const produtos = await produtosRepo.listar(req.usuarioId, {
     status: typeof status === "string" ? status : undefined,
     nicho: typeof nicho === "string" ? nicho : undefined,
     fonte: fonte === "mercado_livre" || fonte === "shopee" || fonte === "monitorados" ? fonte : undefined,
@@ -38,9 +38,9 @@ rotaProdutos.get("/", async (req, res) => {
 // junto por ON DELETE CASCADE, ver migration 004). Mesma operação que já
 // roda sozinha antes de cada captura (capturarProdutos.ts), exposta aqui pra
 // o usuário poder zerar a fila manualmente sem precisar recapturar na hora.
-rotaProdutos.delete("/", async (_req, res) => {
+rotaProdutos.delete("/", async (req, res) => {
   try {
-    await produtosRepo.removerTodos();
+    await produtosRepo.removerTodos(req.usuarioId);
     res.json({ ok: true });
   } catch (err) {
     logger.error({ err }, "falha ao limpar produtos");
@@ -55,7 +55,7 @@ rotaProdutos.post("/capturar", async (req, res) => {
     return;
   }
   try {
-    const resultado = await capturarProdutosPorNicho(nicho);
+    const resultado = await capturarProdutosPorNicho(req.usuarioId, nicho);
     res.json(resultado);
   } catch (err) {
     logger.error({ err, nicho }, "falha ao capturar produtos");
@@ -70,7 +70,7 @@ rotaProdutos.post("/capturar-shopee", async (req, res) => {
     return;
   }
   try {
-    const resultado = await capturarProdutosShopeePorNicho(nicho);
+    const resultado = await capturarProdutosShopeePorNicho(req.usuarioId, nicho);
     res.json(resultado);
   } catch (err) {
     logger.error({ err, nicho }, "falha ao capturar ofertas Shopee");
@@ -91,7 +91,7 @@ rotaProdutos.post("/capturar-manual", async (req, res) => {
     return;
   }
   try {
-    const resultado = await capturarProdutoManual({
+    const resultado = await capturarProdutoManual(req.usuarioId, {
       url,
       cupom: typeof cupom === "string" && cupom ? cupom : undefined,
       precoPromocional: typeof precoPromocional === "number" ? precoPromocional : undefined,
@@ -111,7 +111,7 @@ rotaProdutos.post("/capturar-manual", async (req, res) => {
 
 rotaProdutos.delete("/:id", async (req, res) => {
   try {
-    await produtosRepo.remover(Number(req.params.id));
+    await produtosRepo.remover(req.usuarioId, Number(req.params.id));
     res.json({ ok: true });
   } catch (err) {
     logger.error({ err }, "falha ao apagar produto");
@@ -121,7 +121,7 @@ rotaProdutos.delete("/:id", async (req, res) => {
 
 rotaProdutos.get("/:id/canais-elegiveis", async (req, res) => {
   try {
-    const canais = await canaisElegiveis(Number(req.params.id));
+    const canais = await canaisElegiveis(req.usuarioId, Number(req.params.id));
     res.json(canais);
   } catch (err) {
     res.status(404).json({ erro: (err as Error).message });
@@ -130,13 +130,13 @@ rotaProdutos.get("/:id/canais-elegiveis", async (req, res) => {
 
 rotaProdutos.post("/:id/gerar-chamada", async (req, res) => {
   try {
-    const produto = await produtosRepo.buscarPorId(Number(req.params.id));
+    const produto = await produtosRepo.buscarPorId(req.usuarioId, Number(req.params.id));
     if (!produto || !produto.titulo) {
       res.status(404).json({ erro: "produto não encontrado" });
       return;
     }
     const chamada = await gerarChamada(produto.titulo);
-    await produtosRepo.atualizarChamada(produto.id, chamada);
+    await produtosRepo.atualizarChamada(req.usuarioId, produto.id, chamada);
     res.json({ chamada });
   } catch (err) {
     logger.error({ err }, "falha ao gerar chamada");
@@ -150,13 +150,13 @@ rotaProdutos.put("/:id/chamada", async (req, res) => {
     res.status(400).json({ erro: "chamada (texto) é obrigatória" });
     return;
   }
-  await produtosRepo.atualizarChamada(Number(req.params.id), chamada);
+  await produtosRepo.atualizarChamada(req.usuarioId, Number(req.params.id), chamada);
   res.json({ chamada });
 });
 
 rotaProdutos.post("/:id/disparar/:canalId", async (req, res) => {
   try {
-    await dispararParaCanal(Number(req.params.id), Number(req.params.canalId));
+    await dispararParaCanal(req.usuarioId, Number(req.params.id), Number(req.params.canalId));
     res.json({ ok: true });
   } catch (err) {
     logger.error({ err }, "falha ao disparar produto");

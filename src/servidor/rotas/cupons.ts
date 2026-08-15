@@ -6,13 +6,13 @@ export const rotaCupons = Router();
 
 rotaCupons.get("/", async (req, res) => {
   const limite = req.query.limite ? Number(req.query.limite) : 100;
-  const cupons = await cuponsRepo.listarRecentes(limite);
+  const cupons = await cuponsRepo.listarRecentes(req.usuarioId, limite);
 
   const comDetalhes = await Promise.all(
     cupons.map(async (cupom) => {
       const codigos = extrairCupons(cupom.texto);
       const { plataforma } = detectarPlataformaCupom(cupom.texto);
-      const disparos = await cuponsRepo.listarDisparosPorCupom(cupom.id);
+      const disparos = await cuponsRepo.listarDisparosPorCupom(req.usuarioId, cupom.id);
       return { ...cupom, codigos, plataforma, disparos };
     }),
   );
