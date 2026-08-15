@@ -119,17 +119,25 @@ export async function canaisElegiveis(produtoId: number): Promise<CanalComElegib
       continue;
     }
 
+    // Grupo bloqueado NÃO impede mais o envio manual (aba Produtos) desde
+    // 2026-08-15 — decisão explícita do usuário: quer poder mandar um
+    // produto de grupo monitorado pra um canal que não tem esse grupo na
+    // allow-list, sabendo do risco, mesma filosofia já aplicada ao
+    // intervalo mínimo (ver comentário mais abaixo). Só avisa via `motivo`
+    // (aparece na UI mesmo com elegivel:true, ver ProdutoCard.tsx), não
+    // bloqueia mais. O disparo AUTOMÁTICO não passa por essa função (usa
+    // proximoProdutoElegivel/listarPorNichos), então continua respeitando a
+    // allow-list normalmente.
     const grupoStatus = grupoMonitoradoStatus(canal, produto);
-    if (grupoStatus === "bloqueado") {
-      resultado.push({
-        ...canal,
-        elegivel: false,
-        motivo: "grupo monitorado não permitido nesse canal",
-      });
-      continue;
-    }
+    const avisoGrupoNaoPermitido =
+      grupoStatus === "bloqueado" ? "grupo monitorado não permitido nesse canal — enviando manualmente mesmo assim" : undefined;
 
-    if (grupoStatus !== "bypass_nicho" && !nichoElegivel(canal, produto.nicho)) {
+    // "bypass_nicho" (grupo permitido) e "bloqueado" (grupo não permitido,
+    // mas liberado pro envio manual acima) pulam a checagem de nicho — o
+    // filtro de nicho existe pra escolher canal automaticamente, não faz
+    // sentido reaplicar quando o usuário já escolheu manualmente esse
+    // produto especifico pra esse canal.
+    if (grupoStatus === "sem_restricao" && !nichoElegivel(canal, produto.nicho)) {
       resultado.push({
         ...canal,
         elegivel: false,
@@ -162,7 +170,7 @@ export async function canaisElegiveis(produtoId: number): Promise<CanalComElegib
     // esperar o intervalo, sabendo do risco. O disparo AUTOMÁTICO continua
     // respeitando o intervalo normalmente (checagem própria, ver
     // agendadorDisparo.ts -> processarCanal), essa mudança não afeta ele.
-    resultado.push({ ...canal, elegivel: true });
+    resultado.push({ ...canal, elegivel: true, motivo: avisoGrupoNaoPermitido });
   }
 
   return resultado;
