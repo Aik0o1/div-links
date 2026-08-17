@@ -180,6 +180,14 @@ const FONTE_PRIORITARIA = "'telegram_terceiros', 'whatsapp_terceiros', 'telegram
  * pra excluir grupo bloqueado que bateu no nicho por coincidência, é feita
  * em JS por quem chama essa função). Ordem de prioridade (grupo monitorado
  * primeiro) não muda em nenhum dos dois casos.
+ *
+ * Só considera produto capturado HOJE (fuso America/Sao_Paulo) — usada pelo
+ * disparo AUTOMÁTICO (proximoProdutoElegivel), nunca pela aba Produtos
+ * (listar(), sem esse filtro, continua mostrando tudo pro usuário escolher
+ * manualmente). Pedido explícito do usuário: produto capturado ontem e
+ * nunca disparado (ex.: fila que empacou, canal ficou inativo um dia) não
+ * deve furar pra hoje com preço/promoção potencialmente vencidos — melhor
+ * ficar parado esperando alguém decidir manualmente do que sair sozinho.
  */
 export async function listarPorNichos(
   usuarioId: number,
@@ -187,9 +195,11 @@ export async function listarPorNichos(
   status: string,
   gruposPermitidos?: string[] | null,
 ): Promise<ProdutoRow[]> {
+  const FILTRO_HOJE = `criado_em AT TIME ZONE 'America/Sao_Paulo' >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo')`;
+
   if (nichos === null) {
     const { rows } = await pool.query(
-      `SELECT * FROM produtos WHERE usuario_id = $1 AND status = $2
+      `SELECT * FROM produtos WHERE usuario_id = $1 AND status = $2 AND ${FILTRO_HOJE}
        ORDER BY (fonte IN (${FONTE_PRIORITARIA})) DESC, criado_em ASC`,
       [usuarioId, status],
     );
@@ -198,7 +208,8 @@ export async function listarPorNichos(
 
   const { rows } = await pool.query(
     `SELECT * FROM produtos
-     WHERE usuario_id = $1 AND status = $3 AND (nicho = ANY($2) OR ($4::text[] IS NOT NULL AND grupo_origem_id = ANY($4)))
+     WHERE usuario_id = $1 AND status = $3 AND ${FILTRO_HOJE}
+       AND (nicho = ANY($2) OR ($4::text[] IS NOT NULL AND grupo_origem_id = ANY($4)))
      ORDER BY (fonte IN (${FONTE_PRIORITARIA})) DESC, criado_em ASC`,
     [usuarioId, nichos, status, gruposPermitidos && gruposPermitidos.length > 0 ? gruposPermitidos : null],
   );
