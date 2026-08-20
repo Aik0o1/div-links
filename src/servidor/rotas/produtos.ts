@@ -2,6 +2,7 @@ import { Router } from "express";
 import path from "node:path";
 import * as produtosRepo from "../../repositorios/produtos.js";
 import type { ProdutoRow } from "../../repositorios/produtos.js";
+import * as configuracoesRepo from "../../repositorios/configuracoes.js";
 import { capturarProdutosPorNicho } from "../../servicos/capturarProdutos.js";
 import { capturarProdutosShopeePorNicho } from "../../servicos/capturarProdutosShopee.js";
 import { capturarProdutoManual } from "../../servicos/capturarProdutoManual.js";
@@ -24,14 +25,41 @@ function paraExibicao(produto: ProdutoRow): ProdutoRow {
   return { ...produto, imagemUrl: `/imagens-capturadas/${path.basename(produto.imagemUrl)}` };
 }
 
+/**
+ * Id -> nome de exibição de todo grupo monitorado (Telegram + WhatsApp)
+ * desse tenant — usado só pra mostrar "veio do grupo X" na aba Produtos
+ * (ver ProdutoRow.grupoOrigemId). Grupo selecionado antes do campo `nome`
+ * existir (ver configuracoes.ts) simplesmente não aparece aqui até o
+ * usuário salvar a seleção de novo.
+ */
+async function mapaNomesGruposMonitorados(usuarioId: number): Promise<Map<string, string>> {
+  const [telegramGrupos, whatsappGrupos] = await Promise.all([
+    configuracoesRepo.obterTelegramListenerGrupos(usuarioId),
+    configuracoesRepo.obterWhatsappGruposMonitorados(usuarioId),
+  ]);
+  const mapa = new Map<string, string>();
+  for (const grupo of [...telegramGrupos, ...whatsappGrupos]) {
+    if (grupo.nome) mapa.set(grupo.id, grupo.nome);
+  }
+  return mapa;
+}
+
 rotaProdutos.get("/", async (req, res) => {
   const { status, nicho, fonte } = req.query;
-  const produtos = await produtosRepo.listar(req.usuarioId, {
-    status: typeof status === "string" ? status : undefined,
-    nicho: typeof nicho === "string" ? nicho : undefined,
-    fonte: fonte === "mercado_livre" || fonte === "shopee" || fonte === "monitorados" ? fonte : undefined,
-  });
-  res.json(produtos.map(paraExibicao));
+  const [produtos, nomesGrupos] = await Promise.all([
+    produtosRepo.listar(req.usuarioId, {
+      status: typeof status === "string" ? status : undefined,
+      nicho: typeof nicho === "string" ? nicho : undefined,
+      fonte: fonte === "mercado_livre" || fonte === "shopee" || fonte === "monitorados" ? fonte : undefined,
+    }),
+    mapaNomesGruposMonitorados(req.usuarioId),
+  ]);
+  res.json(
+    produtos.map((produto) => ({
+      ...paraExibicao(produto),
+      grupoOrigemNome: produto.grupoOrigemId ? (nomesGrupos.get(produto.grupoOrigemId) ?? null) : null,
+    })),
+  );
 });
 
 // Apaga todos os produtos (inclusive já enviados — histórico de disparos vai

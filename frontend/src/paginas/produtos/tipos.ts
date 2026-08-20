@@ -13,6 +13,10 @@ export interface ProdutoRow {
   precoNoPix: boolean;
   status: string;
   criadoEm: string;
+  /** Id do grupo monitorado (WhatsApp JID ou Telegram chat id) de onde esse produto veio — null pra captura em massa ML/Shopee. */
+  grupoOrigemId: string | null;
+  /** Nome de exibição do grupo monitorado — só presente se o grupo foi selecionado depois que esse campo passou a ser salvo (ver GruposMonitorados.tsx). */
+  grupoOrigemNome: string | null;
 }
 
 export interface CanalElegivel {

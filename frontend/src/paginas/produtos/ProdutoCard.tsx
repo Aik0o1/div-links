@@ -106,6 +106,10 @@ export function ProdutoCard({ produto, onRemovido }: { produto: ProdutoRow; onRe
           </Badge>
         </div>
 
+        {ehMonitorado && produto.grupoOrigemNome && (
+          <p className="-mt-1 text-xs text-muted-foreground">Grupo: {produto.grupoOrigemNome}</p>
+        )}
+
         <p className="text-sm font-semibold leading-snug">{produto.titulo || "(sem título)"}</p>
 
         <div className="text-sm">

@@ -54,6 +54,8 @@ export interface GrupoMonitoradoConfig {
   id: string;
   /** Nicho aplicado aos produtos capturados desse grupo (ver dispararProduto.ts / canais_destino.categorias_permitidas). */
   nicho: string;
+  /** Nome de exibição do grupo (o painel já tem em mãos ao selecionar, ver GruposMonitorados.tsx) — usado só pra mostrar de qual grupo um produto veio na aba Produtos (ProdutoCard.tsx). Ausente em seleção salva antes dessa mudança, some sozinho ao salvar de novo. */
+  nome?: string;
 }
 
 // Migra formatos antigos (string do grupo único, depois string[] de vários ids

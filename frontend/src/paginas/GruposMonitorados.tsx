@@ -19,6 +19,8 @@ interface NichoRow {
 interface GrupoMonitorado {
   id: string;
   nicho: string;
+  /** Nome de exibição do grupo — usado pra mostrar "veio do grupo X" na aba Produtos. */
+  nome?: string;
 }
 
 function BlocoPlataforma({
@@ -75,7 +77,7 @@ function BlocoPlataforma({
     try {
       const grupos2 = Object.entries(selecao)
         .filter(([, nicho]) => nicho !== null)
-        .map(([id, nicho]) => ({ id, nicho: nicho! }));
+        .map(([id, nicho]) => ({ id, nicho: nicho!, nome: grupos.find((g) => g.id === id)?.nome }));
       await salvar(grupos2);
       toast.success(`Grupos monitorados do ${titulo} salvos.`);
       setAberto(false);
