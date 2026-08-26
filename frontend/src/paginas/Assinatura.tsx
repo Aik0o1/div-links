@@ -153,11 +153,20 @@ export default function Assinatura({ onAtualizar }: { onAtualizar?: () => void }
       ) : (
       <div className="grid gap-4 sm:grid-cols-3">
         {planos.map((plano) => {
-          const ehAtual = assinatura?.plano === plano.id && (assinatura.status === "ativa" || assinatura.status === "trial");
+          // "trial" NUNCA conta como "plano atual" pro botão — é só teste
+          // grátis, não uma assinatura paga de verdade (bug real: card do
+          // Básico mostrava "Plano atual" desabilitado pra quem tinha
+          // acabado de se cadastrar, dando a impressão de já estar
+          // assinado sem nunca ter pago nada). Continua destacando o card
+          // visualmente (é o plano "correspondente" ao trial), mas o botão
+          // deixa claro que é possível assinar de verdade a qualquer hora,
+          // encerrando o teste na hora.
+          const ehPlanoAtivo = assinatura?.plano === plano.id && assinatura.status === "ativa";
+          const emTrialNessePlano = assinatura?.plano === plano.id && assinatura.status === "trial";
           return (
             <div
               key={plano.id}
-              className={`flex flex-col gap-3 rounded-lg border bg-card p-5 shadow-sm ${ehAtual ? "border-primary ring-1 ring-primary" : ""}`}
+              className={`flex flex-col gap-3 rounded-lg border bg-card p-5 shadow-sm ${ehPlanoAtivo || emTrialNessePlano ? "border-primary ring-1 ring-primary" : ""}`}
             >
               <div>
                 <h3 className="text-lg font-bold">{plano.nome}</h3>
@@ -184,9 +193,10 @@ export default function Assinatura({ onAtualizar }: { onAtualizar?: () => void }
                   Produtos ilimitados
                 </li>
               </ul>
-              <Button onClick={() => assinar(plano.id)} disabled={processando === plano.id || ehAtual}>
+              {emTrialNessePlano && <p className="text-xs text-warning">Em teste grátis — ainda não é uma assinatura paga.</p>}
+              <Button onClick={() => assinar(plano.id)} disabled={processando === plano.id || ehPlanoAtivo}>
                 <CreditCard className="h-4 w-4" />
-                {ehAtual ? "Plano atual" : "Assinar"}
+                {ehPlanoAtivo ? "Plano atual" : emTrialNessePlano ? "Assinar agora" : "Assinar"}
               </Button>
             </div>
           );
