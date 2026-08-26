@@ -13,6 +13,7 @@ import {
   enviarFotoLocalComLegenda as enviarFotoLocalWhatsapp,
 } from "../integracoes/evolutionApi/bot.js";
 import { gerarChamada } from "../integracoes/ollama/gerarChamada.js";
+import { comMarcaDaguaSeTrial } from "./marcaDagua.js";
 import { calcularDesconto } from "./calcularDesconto.js";
 import { logger } from "../config/logger.js";
 import type { CanalRow } from "../repositorios/canais.js";
@@ -269,16 +270,19 @@ export async function dispararParaCanal(usuarioId: number, produtoId: number, ca
         ? ((await configuracoesRepo.obterLinkCupomShopeeFixo(usuarioId)) ?? undefined)
         : undefined;
 
-    const legenda = gerarLegenda({
-      titulo: produto.titulo,
-      chamada,
-      precoOriginal: produto.precoOriginal ?? undefined,
-      precoPromocional: produto.precoPromocional ?? undefined,
-      cupom: produto.cupom ?? undefined,
-      linkCupom,
-      precoNoPix: produto.precoNoPix,
-      linkAfiliado,
-    });
+    const legenda = await comMarcaDaguaSeTrial(
+      usuarioId,
+      gerarLegenda({
+        titulo: produto.titulo,
+        chamada,
+        precoOriginal: produto.precoOriginal ?? undefined,
+        precoPromocional: produto.precoPromocional ?? undefined,
+        cupom: produto.cupom ?? undefined,
+        linkCupom,
+        precoNoPix: produto.precoNoPix,
+        linkAfiliado,
+      }),
+    );
 
     // Imagem de produto Shopee vem do post (baixada localmente, ver
     // capturarProdutoShopee.ts), não é uma URL pública — usa a variante de

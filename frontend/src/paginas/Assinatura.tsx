@@ -56,12 +56,15 @@ export default function Assinatura({ onAtualizar }: { onAtualizar?: () => void }
     carregar();
   }, [carregar]);
 
-  async function assinar(plano: PlanoId) {
-    setProcessando(plano);
+  async function assinar(plano: PlanoInfo) {
+    if (!confirm(`Ir pro Mercado Pago pra assinar o plano ${plano.nome} (${formatarPrecoPlano(plano.precoCentavos)}/mês)?`)) {
+      return;
+    }
+    setProcessando(plano.id);
     try {
       const { initPoint } = await api<{ initPoint: string }>("/assinatura/checkout", {
         method: "POST",
-        body: JSON.stringify({ plano }),
+        body: JSON.stringify({ plano: plano.id }),
       });
       window.location.href = initPoint;
     } catch (err) {
@@ -194,7 +197,7 @@ export default function Assinatura({ onAtualizar }: { onAtualizar?: () => void }
                 </li>
               </ul>
               {emTrialNessePlano && <p className="text-xs text-warning">Em teste grátis — ainda não é uma assinatura paga.</p>}
-              <Button onClick={() => assinar(plano.id)} disabled={processando === plano.id || ehPlanoAtivo}>
+              <Button onClick={() => assinar(plano)} disabled={processando === plano.id || ehPlanoAtivo}>
                 <CreditCard className="h-4 w-4" />
                 {ehPlanoAtivo ? "Plano atual" : emTrialNessePlano ? "Assinar agora" : "Assinar"}
               </Button>

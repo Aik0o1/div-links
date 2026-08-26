@@ -45,7 +45,7 @@ export function Sidebar({
           <Link2 className="h-4.5 w-4.5 text-white" />
         </span>
         <div>
-          <h1 className="text-[17px] font-bold leading-tight tracking-tight">Divulga Links</h1>
+          <h1 className="text-[17px] font-bold leading-tight tracking-tight">PromoFlow</h1>
           <p className="text-xs text-[#a8abc0]">Automação de afiliados</p>
         </div>
       </div>

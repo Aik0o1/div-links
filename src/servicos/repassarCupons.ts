@@ -6,6 +6,7 @@ import { enviarFotoLocalComLegenda as enviarFotoLocalTelegram } from "../integra
 import { enviarFotoLocalComLegenda as enviarFotoLocalWhatsapp } from "../integracoes/evolutionApi/bot.js";
 import { extrairCupons, formatarLegendaCupons, detectarPlataformaCupom } from "./parsearCupons.js";
 import { gerarLinkAfiliado as gerarLinkAfiliadoShopee } from "../integracoes/shopee/api.js";
+import { comMarcaDaguaSeTrial } from "./marcaDagua.js";
 import { logger } from "../config/logger.js";
 import type { CanalRow } from "../repositorios/canais.js";
 
@@ -99,7 +100,7 @@ export async function dispararCupomPendente(usuarioId: number, canal: CanalRow):
       link = linkFixo;
     }
 
-    const legenda = formatarLegendaCupons(cuponsExtraidos, link, plataforma);
+    const legenda = await comMarcaDaguaSeTrial(usuarioId, formatarLegendaCupons(cuponsExtraidos, link, plataforma));
     const banner = plataforma === "shopee" ? BANNER_CUPOM_SHOPEE : BANNER_CUPOM_ML;
     try {
       if (canal.tipo === "telegram") {

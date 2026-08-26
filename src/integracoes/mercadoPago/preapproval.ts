@@ -24,7 +24,7 @@ export async function criarPreapproval(
   const corpo = await chamarMercadoPago("/preapproval", {
     method: "POST",
     body: {
-      reason: `Divulga Links — Plano ${config.nome}`,
+      reason: `PromoFlow — Plano ${config.nome}`,
       auto_recurring: {
         frequency: 1,
         frequency_type: "months",

@@ -48,7 +48,7 @@ export default function Signup({
           <span className="flex h-11 w-11 items-center justify-center rounded-[13px] bg-gradient-to-br from-primary to-[#b3a6ff] shadow-[0_4px_14px_rgba(106,92,255,0.5)]">
             <Link2 className="h-5 w-5 text-white" />
           </span>
-          <CardTitle className="mt-2 text-xl">Divulga Links</CardTitle>
+          <CardTitle className="mt-2 text-xl">PromoFlow</CardTitle>
           <CardDescription>Crie sua conta pra começar</CardDescription>
         </CardHeader>
         <CardContent>
