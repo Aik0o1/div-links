@@ -36,6 +36,16 @@ export async function iniciarCheckout(usuarioId: number, plano: PlanoId, backUrl
   if (!usuario) throw new Error("Usuário não encontrado");
 
   const atual = await assinaturasRepo.buscarPorUsuarioId(usuarioId);
+  // Bug real (2026-08-26): conta isenta (ex.: a do dono do produto) clicou
+  // em "Assinar" só pra testar e isso sobrescreveu o status pra "pendente",
+  // apagando a isenção e bloqueando o próprio acesso na hora (isenta não
+  // tem trial_expira_em preenchido, então acessoLiberado() não tinha mais
+  // nenhum motivo pra liberar). Conta isenta nunca deveria conseguir
+  // "comprar" um plano por esse fluxo — ela já tem acesso liberado de
+  // propósito, sem depender do Mercado Pago.
+  if (atual?.status === "isenta") {
+    throw new Error("Essa conta é isenta de cobrança e não passa pelo checkout.");
+  }
   if (atual?.mpPreapprovalId && atual.status !== "cancelada") {
     await cancelarPreapproval(atual.mpPreapprovalId).catch((err) => {
       logger.warn({ err, usuarioId }, "falha ao cancelar preapproval antiga (seguindo pra criar a nova mesmo assim)");

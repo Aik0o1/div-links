@@ -146,6 +146,11 @@ export default function Assinatura({ onAtualizar }: { onAtualizar?: () => void }
         </div>
       )}
 
+      {assinatura?.status === "isenta" ? (
+        <p className="rounded-md border bg-card p-4 text-sm text-muted-foreground shadow-sm">
+          Essa conta é isenta de cobrança — não precisa (e não dá pra) assinar um plano por aqui.
+        </p>
+      ) : (
       <div className="grid gap-4 sm:grid-cols-3">
         {planos.map((plano) => {
           const ehAtual = assinatura?.plano === plano.id && (assinatura.status === "ativa" || assinatura.status === "trial");
@@ -187,6 +192,7 @@ export default function Assinatura({ onAtualizar }: { onAtualizar?: () => void }
           );
         })}
       </div>
+      )}
     </div>
   );
 }
