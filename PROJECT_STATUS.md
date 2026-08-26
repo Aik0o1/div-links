@@ -182,6 +182,23 @@ Motivado pela decisão de transformar o sistema (até então uso pessoal do Vict
 - **Fora de escopo desta fase** (registrado no plano original, ainda válido): billing/Stripe, recuperação de senha por email (sem SMTP hoje), verificação de email no signup, rate limiting/proteção brute-force no login, criptografia at-rest do cookie do ML/sessão do Telegram (ficam em texto puro no Postgres), RBAC/múltiplos usuários por conta, paralelismo real entre tenants no disparo automático (roda sequencial por simplicidade — não é mais limitação técnica desde que o Chrome saiu da equação, mas não foi paralelizado ainda), limpeza automática de instância Evolution órfã se um tenant for deletado, deploy num servidor real (hoje ainda roda só na máquina do Victor).
 - Testado ponta a ponta em produção depois do deploy: login com a conta do Victor, `/api/produtos`/`/api/nichos`/`/api/configuracoes`/`/api/dashboard/metricas` respondendo com os dados migrados corretos, `INSERT` sem `usuario_id` falhando de propósito (constraint pegou), WhatsApp reconectado e disparo automático rodando de novo.
 
+### 2.13 Cobrança recorrente via Mercado Pago (2026-08-26)
+
+Primeira peça de billing real do plano de virar SaaS vendável (seção 6.1) — 3 planos (Básico R$50/mês, Pro R$100, Plus R$150), cobrança **recorrente automática** (não avulsa) via **Checkout Pro de Assinaturas** (API de "preapproval" do Mercado Pago — redireciona pro MP, nunca lida com dado de cartão), decisão do usuário (Pix/boleto nativos pro público brasileiro, mesmo ecossistema do Mercado Livre que o produto já integra). Plano completo em `/home/victor/.claude/plans/nifty-squishing-widget.md`.
+
+- **Tabelas novas** (`025_assinaturas.sql`): `assinaturas` (uma por tenant, `usuario_id UNIQUE` — trocar de plano cancela a preapproval antiga no MP e cria uma nova, não faz upsert de valor numa existente) e `pagamentos` (histórico, dedup por `mp_payment_id`). Status possíveis: `trial` (7 dias grátis no Básico, criado automaticamente no signup), `pendente` (checkout criado, aguardando autorização), `ativa`, `atrasada` (cobrança recorrente falhou), `cancelada`, `isenta` (conta do Victor — nunca passa pelo Mercado Pago, marcada direto no banco).
+- **Liberação de acesso checa a DATA (`trial_expira_em`), não o campo `status` literal** (`acessoLiberado` em `repositorios/assinaturas.ts`) — bug real pego testando: iniciar um checkout durante o trial já marca `status='pendente'`, e checar só `status === 'trial'` derrubava o acesso na hora, antes mesmo do pagamento ser confirmado ou falhar.
+- **Planos hardcoded** (`servicos/planos.ts`, mesmo espírito de `seedNichosPadrao.ts`) — preço e limites (nº de canais de destino, nº de grupos monitorados) vivem em código, não em tabela.
+- **Gating por plano**: `POST /api/canais` (nº de canais) e `POST /api/{telegram-listener,whatsapp}/grupos-monitorados` (nº de grupos monitorados, **limite combinado entre WhatsApp e Telegram** — salvar a seleção de uma plataforma soma com o que já está salvo na outra antes de comparar com o limite).
+- **Bloqueio de conta sem assinatura ativa**: `exigirAssinaturaAtiva` (`middleware/assinatura.ts`) — 402 com `bloqueadoPorAssinatura: true` em toda rota de feature quando a conta não tem acesso liberado. Montado em `app.ts` depois de `/api/assinatura` de propósito (essa rota nunca pode ficar presa no próprio bloqueio — senão o tenant bloqueado não conseguiria nem ver os planos pra assinar).
+- **Integração** (`integracoes/mercadoPago/`) — fetch puro, sem SDK novo, mesmo estilo de `evolutionApi/cliente.ts`/`shopee/api.ts`: `cliente.ts` (Bearer token), `preapproval.ts` (criar/buscar/cancelar), `pagamentos.ts` (buscar por id), `webhookSignature.ts` (valida `x-signature`, HMAC-SHA256 contra `MERCADOPAGO_WEBHOOK_SECRET` — mais crítico que a ausência de validação no webhook do WhatsApp, porque aqui controla acesso/dinheiro).
+- **Sincronização de status SEMPRE busca o estado atual direto na API do MP** (nunca confia no corpo do webhook sozinho pra decidir o que mudar) — mesmo código (`sincronizarStatusPorPreapprovalId`) é chamado tanto pelo webhook quanto pelo **polling ativo** (`POST /api/assinatura/verificar`, botão "Já paguei, verificar" na UI).
+- **Limitação conhecida, sem solução ainda**: o sistema roda só localmente (sem deploy público) — o Mercado Pago **recusa criar uma preapproval com `back_url` `localhost`** (erro "Invalid value for back_url") e não alcança o webhook de jeito nenhum sem HTTPS público. `calcularBackUrl` em `rotas/assinatura.ts` cai num domínio genérico (`mercadopago.com.br`) só pra passar na validação enquanto isso — o polling ativo é o caminho principal de uso/teste até existir um deploy real (ou um túnel tipo ngrok).
+- **Sandbox do Mercado Pago exige "usuários de teste" pareados** pra simular o comprador (`POST /users/test_user`, `site_id: "MLB"`, devolve email/senha fake tipo `test_user_XXXX@testuser.com`) — usar um email qualquer como `payer_email` falha com `guest_site_mismatch`. Confirmado testando ao vivo contra o sandbox (credenciais de TESTE já configuradas no `.env`).
+- **Frontend**: `paginas/Assinatura.tsx` (status atual + 3 cards de plano + botões assinar/verificar/cancelar — usado tanto como aba normal do painel quanto, sem sidebar, como a própria tela de bloqueio), `lib/assinatura.ts` (`useAssinatura`, mesmo padrão do `useSessao`), novo evento global `EVENTO_ASSINATURA_BLOQUEADA` em `lib/api.ts` (dispara em qualquer 402 com esse motivo, não só na checagem inicial de carregamento).
+- **Credenciais de TESTE já em uso em produção** (`.env`: `MERCADOPAGO_ACCESS_TOKEN`/`MERCADOPAGO_PUBLIC_KEY`) — ninguém consegue pagar de verdade ainda (só a conta do Victor, isenta, usa o sistema hoje). Trocar pelas credenciais de produção — e só depois disso configurar a URL de webhook no painel do MP (`MERCADOPAGO_WEBHOOK_SECRET`, precisa de HTTPS público) — antes de aceitar cliente pagante de verdade.
+- Testado de ponta a ponta isolado (porta 3401): trial criado no signup, checkout real gerado no sandbox (`init_point` válido), limite de canal bloqueando no 2º (403), bloqueio completo (assinatura cancelada → 402 em rota de feature, `/api/assinatura/*` continua respondendo) — depois confirmado com a conta real do Victor em produção (isenta, acesso total).
+
 ---
 
 ## 3. Arquitetura / arquivos
@@ -210,19 +227,22 @@ src/
       cliente.ts                    MTProto (GramJS) — login em etapas, sessão no Postgres, listarDialogos, verificarNovasMensagens (polling, ver seção 2.10)
     ollama/
       gerarChamada.ts                gerarChamada(tituloProduto) — chama o Ollama local
+    mercadoPago/
+      cliente.ts, preapproval.ts, pagamentos.ts, webhookSignature.ts    cobrança (ver seção 2.13) — fetch puro, Checkout Pro de Assinaturas
   linkAfiliado/    tipos.ts, cache.ts (comCache, chave por tenant), linkMercadoLivre.ts, index.ts — gerar(usuarioId, urlProduto)
   legenda/         gerarLegenda.ts
   assets/imgs/     MLimg.jpeg — banner fixo usado nos cupons repassados do Telegram
-  repositorios/    usuarios.ts, sessoes.ts (auth, ver seção 2.12), nichos.ts, configuracoes.ts, canais.ts, produtos.ts, disparos.ts, cupons.ts — acesso direto ao Postgres, toda função com usuarioId como 1º parâmetro
-  servicos/        seedNichosPadrao.ts (roda no signup, ver 2.12), capturarProdutos.ts, dispararProduto.ts (canaisElegiveis, proximoProdutoElegivel, dispararParaCanal), repassarCupons.ts, parsearCupons.ts, parsearProdutoCard.ts, capturarProdutoTerceiro.ts, processarMensagemGrupo.ts (orquestrador: decide cupom vs produto) — lógica de negócio
+  repositorios/    usuarios.ts, sessoes.ts (auth, ver seção 2.12), assinaturas.ts, pagamentos.ts (cobrança, ver 2.13), nichos.ts, configuracoes.ts, canais.ts, produtos.ts, disparos.ts, cupons.ts — acesso direto ao Postgres, toda função com usuarioId como 1º parâmetro
+  servicos/        seedNichosPadrao.ts (roda no signup, ver 2.12), planos.ts + assinatura.ts (cobrança, ver 2.13), capturarProdutos.ts, dispararProduto.ts (canaisElegiveis, proximoProdutoElegivel, dispararParaCanal), repassarCupons.ts, parsearCupons.ts, parsearProdutoCard.ts, capturarProdutoTerceiro.ts, processarMensagemGrupo.ts (orquestrador: decide cupom vs produto) — lógica de negócio
   servidor/
-    app.ts               Express app (auth pública em /api/auth + webhook do WhatsApp, resto atrás de exigirAutenticacao, depois /api/* + estático)
+    app.ts               Express app (auth pública em /api/auth + webhooks do WhatsApp/Mercado Pago, /api/assinatura atrás de auth mas antes do gate de assinatura, resto atrás de exigirAutenticacao + exigirAssinaturaAtiva, depois estático)
     iniciar.ts           entrypoint (npm run ui) — sobe o Express, o agendador de disparo, o agendador do monitor de Telegram
     middleware/
       autenticacao.ts    exigirAutenticacao (popula req.usuarioId a partir do cookie de sessão), hashToken, opcoesCookieSessao
+      assinatura.ts      exigirAssinaturaAtiva (ver seção 2.13) — 402 se a conta não tem acesso liberado
     agendadorDisparo.ts  roda em loop (1x/min): itera usuariosRepo.listarAtivos(), por tenant/canal ativo confere intervalo e dispara sozinho se tiver produto elegível (try/catch por tenant — falha de um não trava os outros)
     agendadorMonitorTelegram.ts  roda em loop (45s): verificarNovasMensagens por tenant ativo (Set<usuarioId> de guard, não mais um boolean só — tenants diferentes podem rodar em paralelo)
-    rotas/          auth.ts (signup/login/logout/me), status.ts, nichos.ts, configuracoes.ts, canais.ts, produtos.ts, disparoAutomatico.ts, whatsapp.ts (+ handlerWebhookWhatsapp, público), telegramListener.ts, dashboard.ts, cupons.ts
+    rotas/          auth.ts (signup/login/logout/me), assinatura.ts (planos/checkout/verificar/cancelar + handlerWebhookMercadoPago, público, ver 2.13), status.ts, nichos.ts, configuracoes.ts, canais.ts, produtos.ts, disparoAutomatico.ts, whatsapp.ts (+ handlerWebhookWhatsapp, público), telegramListener.ts, dashboard.ts, cupons.ts
     public/         build gerado pelo Vite (npm run build:frontend) — index.html + assets/, não editar direto. CUIDADO: é servido em produção direto do disco, ver seção 2.12 sobre rodar esse build com o processo ao vivo de pé
   cli/
     capturar.ts     equivalente de terminal do botão "Capturar agora" (npm run capturar -- <usuarioId>, ver seção 2.12)
@@ -233,7 +253,7 @@ frontend/src/       React + Vite + Tailwind. App.tsx (guard de sessão + abas vi
                     components/ui/* (primitivos tipo shadcn: button, dialog, input, textarea, switch, tabs...)
 ```
 
-Tabelas no Postgres: `usuarios`, `sessoes` (auth, ver seção 2.12), `produtos` (+ coluna `nicho`), `canais_destino`, `disparos`, `nichos`, `configuracoes`, `cupons_capturados`, `cupons_disparos`, `schema_migrations`. `oauth_tokens` **removida** (migration `014`, ver seção 2.1). As 7 tabelas de dado de tenant (tudo exceto `usuarios`/`sessoes`/`schema_migrations`) têm `usuario_id NOT NULL` desde a migration `024` (ver seção 2.12).
+Tabelas no Postgres: `usuarios`, `sessoes` (auth, ver seção 2.12), `assinaturas`, `pagamentos` (cobrança, ver seção 2.13, migration `025`), `produtos` (+ coluna `nicho`), `canais_destino`, `disparos`, `nichos`, `configuracoes`, `cupons_capturados`, `cupons_disparos`, `schema_migrations`. `oauth_tokens` **removida** (migration `014`, ver seção 2.1). As 7 tabelas de dado de tenant (tudo exceto `usuarios`/`sessoes`/`schema_migrations`/`assinaturas`/`pagamentos`) têm `usuario_id NOT NULL` desde a migration `024` (ver seção 2.12).
 
 ---
 
@@ -263,6 +283,8 @@ Copie o `.env` da máquina antiga **por fora do git** (nunca vai pro repositóri
 | `EVOLUTION_API_KEY` | Gerada por você (ex.: `openssl rand -hex 16`) — precisa ser o **mesmo valor** em `AUTHENTICATION_API_KEY` no `docker-compose.yml` (já referenciado via `${EVOLUTION_API_KEY}`, não precisa editar o compose). Não existe mais `EVOLUTION_INSTANCE` — o nome da instância é `tenant-{usuarioId}`, calculado no código (ver seção 2.12) |
 | `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` | Credenciais de app em [my.telegram.org](https://my.telegram.org) (login com o número que vai monitorar o grupo, "API development tools", cria um app qualquer) — usadas pelo monitor de cupons (MTProto/GramJS), não confundir com `TELEGRAM_BOT_TOKEN`. Cada tenant loga a própria conta pela UI, essas variáveis só precisam existir uma vez (credencial de *app*, não de conta) |
 | `CONFIG_ENCRYPTION_KEY` | Gere com `openssl rand -hex 32` — criptografa em repouso o cookie de sessão do ML e a sessão do Telegram (ver seção 6.1). Trocar essa chave invalida qualquer valor já criptografado com a antiga |
+| `MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_PUBLIC_KEY` | Painel [mercadopago.com.br/developers](https://www.mercadopago.com.br/developers/panel) — cobrança (ver seção 2.13). **Hoje são credenciais de TESTE** (sandbox, ninguém paga de verdade); trocar pelas de produção antes de aceitar cliente pagante real. **Global**, não é por tenant (é a conta do Victor recebendo, não de cada cliente) |
+| `MERCADOPAGO_WEBHOOK_SECRET` | Só existe depois de configurar a URL de notificação no painel do MP — precisa de HTTPS público (ainda não existe, ver seção 2.13). Vazio por enquanto; sem ele, a validação de assinatura do webhook é pulada (logado como aviso) |
 
 `SHOPEE_APP_ID`/`SHOPEE_SECRET` **não existem mais no `.env`** — só pela UI (aba Config. Afiliados), por tenant, sem fallback (removido em 2026-08-15, ver seção 2.12 — era um vazamento de credencial entre tenants).
 
@@ -293,7 +315,7 @@ Atenção: a porta padrão do painel (`PORTA_UI`) é **3400**, não 3000 — nes
 
 ## 6. Próximos passos (roadmap original, seção 5)
 
-Já feito: Fundação (1), Captura Mercado Livre (2), Link de afiliado (3), "Geração de arte" → virou Geração de Legenda (4), Bot do Telegram + MVP ponta a ponta (5), Motor de Regras básico (6, via canais_destino + UI), Deduplicação (3.3), Painel web cobrindo tudo isso, Integração com WhatsApp via Evolution API (8, envio pra grupos próprios — ver seção 2.5), **7. Escuta de grupos de terceiros — Telegram (MTProto, seções 2.7/2.8) e WhatsApp (webhook Evolution API, seção 2.9), cupons e produtos individuais nos dois**, **transformação multi-tenant + autenticação própria (seção 2.12)**.
+Já feito: Fundação (1), Captura Mercado Livre (2), Link de afiliado (3), "Geração de arte" → virou Geração de Legenda (4), Bot do Telegram + MVP ponta a ponta (5), Motor de Regras básico (6, via canais_destino + UI), Deduplicação (3.3), Painel web cobrindo tudo isso, Integração com WhatsApp via Evolution API (8, envio pra grupos próprios — ver seção 2.5), **7. Escuta de grupos de terceiros — Telegram (MTProto, seções 2.7/2.8) e WhatsApp (webhook Evolution API, seção 2.9), cupons e produtos individuais nos dois**, **transformação multi-tenant + autenticação própria (seção 2.12)**, **cobrança recorrente via Mercado Pago (seção 2.13)**.
 
 Ainda não feito, na ordem do documento original:
 - O Parser/Normalização com LLM (seção 3.2 do doc original) continua sem uso — o monitor de cupons extrai código/desconto/mínimo com **regex simples** (`parsearCupons.ts`), não precisou de LLM porque o formato dos grupos monitorados é consistente o bastante.
@@ -303,13 +325,13 @@ Ainda não feito, na ordem do documento original:
 
 ### 6.1 Pro sistema virar um SaaS vendável de verdade
 
-**Já feito** (2026-08-15, mesmo dia da seção 2.12 — não dependiam de nenhuma conta/credencial externa):
+**Já feito** (2026-08-15/26 — não dependiam de nenhuma conta/credencial externa, ou já receberam a credencial que dependiam):
 - **Rate limiting no login/signup** — `src/servidor/middleware/rateLimit.ts` (`express-rate-limit`, store em memória): 10 tentativas de login por IP a cada 15 min, 5 signups por IP a cada 1h.
 - **Criptografia em repouso** do cookie de sessão do ML e da sessão MTProto do Telegram — `src/config/criptografiaConfig.ts` (AES-256-GCM via `node:crypto`, chave em `CONFIG_ENCRYPTION_KEY`). Descriptografia tolera valor legado em texto puro (auto-migra no próximo `definir`, sem script separado).
 - **Testado isolamento entre tenants de ponta a ponta**: conta de teste criada via signup real em produção, confirmado que começa vazia (só os 8 nichos padrão), não vê nem consegue editar/deletar dado de outra conta (`buscarPorId`/`atualizar`/`remover` filtrando por `usuario_id` funcionando como esperado), removida depois do teste.
+- **Cobrança via Mercado Pago** (seção 2.13) — 3 planos, cobrança recorrente automática, trial de 7 dias, bloqueio de conta sem assinatura ativa, gating de limite (canais/grupos monitorados) por plano. **Ainda com credenciais de TESTE** — falta trocar pelas de produção e configurar o webhook (precisa de deploy público) antes de aceitar cliente pagante de verdade.
 
 **Ainda fora de escopo** — dependem de decisão/credencial externa do usuário, não dá pra simplesmente implementar:
-- **Cobrança** — sem Stripe/pagamento nenhum, não dá pra cobrar ninguém ainda. Precisa de conta Stripe (ou equivalente) e decisão de modelo de preço.
 - **Recuperação de senha** — não existe (precisa de um provedor de SMTP configurado, que não existe hoje). Esquecer a senha = ficar travado, sem caminho de recuperação.
 - **Confirmação de email** no cadastro — não existe, qualquer email é aceito sem verificar. Mesma dependência de SMTP da recuperação de senha.
 - **RBAC / múltiplos usuários por conta** — hoje é 1 conta = 1 usuário, sem times/permissões. Dá pra implementar sem dependência externa, mas é decisão de produto/design maior, não entrou nesta rodada.
