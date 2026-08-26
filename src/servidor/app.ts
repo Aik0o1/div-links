@@ -13,7 +13,9 @@ import { rotaDisparoAutomatico } from "./rotas/disparoAutomatico.js";
 import { rotaWhatsapp, handlerWebhookWhatsapp } from "./rotas/whatsapp.js";
 import { rotaTelegramListener } from "./rotas/telegramListener.js";
 import { rotaDashboard } from "./rotas/dashboard.js";
+import { rotaAssinatura, handlerWebhookMercadoPago } from "./rotas/assinatura.js";
 import { exigirAutenticacao } from "./middleware/autenticacao.js";
+import { exigirAssinaturaAtiva } from "./middleware/assinatura.js";
 
 const DIRETORIO_PUBLIC = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -50,6 +52,12 @@ export function criarApp() {
   // determinístico `tenant-{usuarioId}`), não via `req.usuarioId`.
   app.post("/api/whatsapp/webhook", handlerWebhookWhatsapp);
 
+  // Webhook do Mercado Pago — mesmo motivo do webhook do WhatsApp acima
+  // (chamada externa, sem sessão). Mais crítico validar a origem aqui (ver
+  // handlerWebhookMercadoPago/webhookSignature.ts) porque controla
+  // acesso/dinheiro, não só uma mensagem.
+  app.post("/api/assinatura/webhook", handlerWebhookMercadoPago);
+
   // Estáticos ficam ANTES do middleware de auth de propósito — o próprio
   // index.html/JS/CSS do painel (a SPA que MOSTRA a tela de login) não pode
   // exigir uma sessão já válida pra carregar, senão ninguém consegue nem
@@ -64,6 +72,14 @@ export function criarApp() {
   app.use(express.static(DIRETORIO_PUBLIC));
 
   app.use(exigirAutenticacao);
+
+  // /api/assinatura fica DEPOIS de exigirAutenticacao (precisa de sessão),
+  // mas ANTES de exigirAssinaturaAtiva — um tenant com assinatura vencida
+  // continua precisando ver os planos, gerar checkout e cancelar; ele nunca
+  // pode ficar preso no próprio bloqueio que essa rota resolve.
+  app.use("/api/assinatura", rotaAssinatura);
+
+  app.use(exigirAssinaturaAtiva);
 
   app.use("/api/status", rotaStatus);
   app.use("/api/nichos", rotaNichos);

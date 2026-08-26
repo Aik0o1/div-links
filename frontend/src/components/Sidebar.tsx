@@ -7,6 +7,7 @@ import {
   Satellite,
   Package,
   Ticket,
+  CreditCard,
   LogOut,
   type LucideIcon,
 } from "lucide-react";
@@ -23,6 +24,7 @@ const ITENS: { aba: Aba; label: string; Icon: LucideIcon }[] = [
   { aba: "monitorados", label: "Grupos monitorados", Icon: Satellite },
   { aba: "produtos", label: "Produtos", Icon: Package },
   { aba: "cupons", label: "Cupons", Icon: Ticket },
+  { aba: "assinatura", label: "Assinatura", Icon: CreditCard },
 ];
 
 export function Sidebar({

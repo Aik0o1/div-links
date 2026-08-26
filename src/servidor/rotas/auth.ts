@@ -3,7 +3,9 @@ import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import * as usuariosRepo from "../../repositorios/usuarios.js";
 import * as sessoesRepo from "../../repositorios/sessoes.js";
+import * as assinaturasRepo from "../../repositorios/assinaturas.js";
 import { seedNichosPadrao } from "../../servicos/seedNichosPadrao.js";
+import { DIAS_TRIAL_GRATIS } from "../../servicos/assinatura.js";
 import { logger } from "../../config/logger.js";
 import { NOME_COOKIE_SESSAO, opcoesCookieSessao, exigirAutenticacao, hashToken } from "../middleware/autenticacao.js";
 import { limiteLogin, limiteSignup } from "../middleware/rateLimit.js";
@@ -50,6 +52,7 @@ rotaAuth.post("/signup", limiteSignup, async (req, res) => {
     const senhaHash = await bcrypt.hash(senha, CUSTO_BCRYPT);
     const usuario = await usuariosRepo.criar(email, senhaHash, typeof nome === "string" ? nome : undefined);
     await seedNichosPadrao(usuario.id);
+    await assinaturasRepo.criarTrial(usuario.id, DIAS_TRIAL_GRATIS);
     await criarSessaoECookie(res, usuario.id, req);
 
     res.status(201).json({ id: usuario.id, email: usuario.email, nome: usuario.nome });

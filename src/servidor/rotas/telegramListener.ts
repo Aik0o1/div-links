@@ -2,6 +2,7 @@ import { Router } from "express";
 import * as listener from "../../integracoes/telegramListener/cliente.js";
 import * as cuponsRepo from "../../repositorios/cupons.js";
 import type { GrupoMonitoradoConfig } from "../../repositorios/configuracoes.js";
+import { validarLimiteGruposMonitorados } from "../../servicos/assinatura.js";
 
 export const rotaTelegramListener = Router();
 
@@ -64,6 +65,13 @@ rotaTelegramListener.post("/grupos-monitorados", async (req, res) => {
     const { grupos } = req.body as { grupos: GrupoMonitoradoConfig[] };
     if (!Array.isArray(grupos)) {
       res.status(400).json({ erro: "grupos (array de {id, nicho}) é obrigatório" });
+      return;
+    }
+    const limite = await validarLimiteGruposMonitorados(req.usuarioId, "telegram", grupos.length);
+    if (!limite.ok) {
+      res.status(403).json({
+        erro: `Seu plano permite até ${limite.limite} grupo(s) monitorado(s) no total (WhatsApp + Telegram). Essa seleção passaria de ${limite.total}.`,
+      });
       return;
     }
     await listener.definirGruposMonitorados(req.usuarioId, grupos);

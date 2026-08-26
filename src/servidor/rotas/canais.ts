@@ -1,5 +1,6 @@
 import { Router } from "express";
 import * as canaisRepo from "../../repositorios/canais.js";
+import { obterLimitesAtuais } from "../../servicos/assinatura.js";
 
 export const rotaCanais = Router();
 
@@ -22,6 +23,16 @@ rotaCanais.post("/", async (req, res) => {
     res.status(400).json({ erro: "tipo e identificadorGrupo são obrigatórios" });
     return;
   }
+
+  const { limiteCanais } = await obterLimitesAtuais(req.usuarioId);
+  const existentes = await canaisRepo.listar(req.usuarioId);
+  if (existentes.length >= limiteCanais) {
+    res.status(403).json({
+      erro: `Seu plano permite até ${limiteCanais} canal(is) de destino. Remova um canal existente ou troque de plano pra adicionar mais.`,
+    });
+    return;
+  }
+
   const canal = await canaisRepo.criar(req.usuarioId, {
     nome,
     tipo,

@@ -5,6 +5,13 @@
 // não faz sentido "deslogar" quem nem estava logado).
 export const EVENTO_NAO_AUTENTICADO = "divulga-links:nao-autenticado";
 
+// Disparado quando uma chamada à API volta 402 com `bloqueadoPorAssinatura`
+// (ver middleware/assinatura.ts no backend) — trial vencido, pagamento
+// atrasado, cancelada, etc. `useAssinatura()` escuta pra derrubar a tela
+// pro bloqueio de assinatura mesmo que a checagem inicial (no load da
+// página) não tivesse pego (ex.: trial venceu com o painel já aberto).
+export const EVENTO_ASSINATURA_BLOQUEADA = "divulga-links:assinatura-bloqueada";
+
 export async function api<T = any>(caminho: string, opcoes?: RequestInit): Promise<T> {
   const resposta = await fetch(`/api${caminho}`, {
     headers: { "Content-Type": "application/json" },
@@ -16,6 +23,9 @@ export async function api<T = any>(caminho: string, opcoes?: RequestInit): Promi
   }
   if (!resposta.ok) {
     const corpo = await resposta.json().catch(() => ({}));
+    if (resposta.status === 402 && corpo.bloqueadoPorAssinatura) {
+      window.dispatchEvent(new Event(EVENTO_ASSINATURA_BLOQUEADA));
+    }
     throw new Error(corpo.erro || `Erro ${resposta.status}`);
   }
   if (resposta.status === 204) return null as T;

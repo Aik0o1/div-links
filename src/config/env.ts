@@ -32,6 +32,14 @@ export const env = {
     apiId: process.env.TELEGRAM_API_ID,
     apiHash: process.env.TELEGRAM_API_HASH,
   },
+  mercadoPago: {
+    accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN,
+    // Só existe depois de configurar a URL de notificação no painel do MP
+    // (precisa de HTTPS público) — sem ela, o webhook ainda funciona pra
+    // decidir O QUE buscar, mas não dá pra validar que a notificação
+    // realmente veio do Mercado Pago (ver mercadoPago/webhookSignature.ts).
+    webhookSecret: process.env.MERCADOPAGO_WEBHOOK_SECRET,
+  },
 };
 
 export function requiredTelegramConfig() {
@@ -58,4 +66,12 @@ export function requiredTelegramListenerConfig() {
     );
   }
   return { apiId: Number(apiId), apiHash };
+}
+
+export function requiredMercadoPagoConfig() {
+  const { accessToken } = env.mercadoPago;
+  if (!accessToken) {
+    throw new Error("Configuração do Mercado Pago incompleta: defina MERCADOPAGO_ACCESS_TOKEN no .env");
+  }
+  return { accessToken };
 }

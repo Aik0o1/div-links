@@ -3,6 +3,7 @@ import { statusInstancia, obterQrCode, listarGrupos } from "../../integracoes/ev
 import * as configuracoesRepo from "../../repositorios/configuracoes.js";
 import type { GrupoMonitoradoConfig } from "../../repositorios/configuracoes.js";
 import { processarMensagemGrupo } from "../../servicos/processarMensagemGrupo.js";
+import { validarLimiteGruposMonitorados } from "../../servicos/assinatura.js";
 import { logger } from "../../config/logger.js";
 
 export const rotaWhatsapp = Router();
@@ -38,6 +39,13 @@ rotaWhatsapp.post("/grupos-monitorados", async (req, res) => {
   const { grupos } = req.body as { grupos: GrupoMonitoradoConfig[] };
   if (!Array.isArray(grupos)) {
     res.status(400).json({ erro: "grupos (array de {id, nicho}) é obrigatório" });
+    return;
+  }
+  const limite = await validarLimiteGruposMonitorados(req.usuarioId, "whatsapp", grupos.length);
+  if (!limite.ok) {
+    res.status(403).json({
+      erro: `Seu plano permite até ${limite.limite} grupo(s) monitorado(s) no total (WhatsApp + Telegram). Essa seleção passaria de ${limite.total}.`,
+    });
     return;
   }
   await configuracoesRepo.definirWhatsappGruposMonitorados(req.usuarioId, grupos);
