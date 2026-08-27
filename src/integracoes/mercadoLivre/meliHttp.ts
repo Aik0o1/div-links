@@ -48,6 +48,24 @@ export async function buscarPaginaMeli(usuarioId: number, url: string): Promise<
       "User-Agent": USER_AGENT,
       Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
       "Accept-Language": "pt-BR,pt;q=0.9",
+      // Faltavam esses (achado em produção 2026-08-27: home carregava normal,
+      // só página de produto/busca caía na parede de verificação, mesmo com
+      // cookie recém-renovado) — todo navegador Chrome de verdade manda esses
+      // cabeçalhos de "client hints"/fetch metadata; sem eles a requisição
+      // destoa o suficiente do tráfego normal pra bater em detecção de bot
+      // específica dessas páginas, mesmo com sessão logada válida.
+      "Sec-Fetch-Dest": "document",
+      "Sec-Fetch-Mode": "navigate",
+      // "none" (não "same-origin") de propósito — não mandamos Referer
+      // nenhum, então isso é o que um navegador de verdade reportaria pra
+      // uma navegação direta (link colado/clicado de outro app, sem
+      // referrer de dentro do próprio mercadolivre.com.br).
+      "Sec-Fetch-Site": "none",
+      "Sec-Fetch-User": "?1",
+      "Upgrade-Insecure-Requests": "1",
+      "sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+      "sec-ch-ua-mobile": "?0",
+      "sec-ch-ua-platform": '"Windows"',
     },
   });
 
