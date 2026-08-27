@@ -45,8 +45,7 @@ export default function Produtos() {
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-xl font-bold tracking-tight">Produtos</h2>
+      <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
         <Button variant="destructive" onClick={limparTudo} disabled={limpando}>
           <Trash2 className="h-4 w-4" />
           Limpar todos os produtos

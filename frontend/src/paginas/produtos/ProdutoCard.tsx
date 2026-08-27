@@ -90,7 +90,7 @@ export function ProdutoCard({ produto, onRemovido }: { produto: ProdutoRow; onRe
   }
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-lg border bg-card shadow-sm transition-shadow hover:shadow-md">
+    <div className="flex flex-col overflow-hidden rounded-lg border border-border bg-card shadow-soft transition-shadow hover:shadow-soft-hover">
       <img src={produto.imagemUrl ?? ""} alt="" className="h-[170px] w-full bg-muted object-contain" />
       <div className="flex flex-1 flex-col gap-2 p-3.5">
         <div className="flex flex-wrap gap-1.5">
@@ -144,7 +144,7 @@ export function ProdutoCard({ produto, onRemovido }: { produto: ProdutoRow; onRe
         </Button>
 
         {canaisAbertos && (
-          <div className="rounded-md bg-muted p-2 text-xs">
+          <div className="rounded-lg bg-muted p-2 text-xs">
             {canais === null ? (
               <p className="text-muted-foreground">Carregando...</p>
             ) : (

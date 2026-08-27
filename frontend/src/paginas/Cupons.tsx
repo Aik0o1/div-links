@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Ticket, Satellite, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { Satellite, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { api, mensagemAmigavel } from "@/lib/api";
 import { buscarGruposMonitoradosDisponiveis, type GrupoMonitoradoOpcao } from "@/lib/gruposMonitorados";
 import { Badge } from "@/components/ui/badge";
@@ -119,10 +119,6 @@ export default function Cupons() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <h2 className="mb-1 flex items-center gap-2 text-xl font-bold tracking-tight">
-        <Ticket className="h-5 w-5 text-primary" />
-        Cupons capturados
-      </h2>
       <p className="mb-4 max-w-2xl text-sm text-muted-foreground">
         Cupons genéricos (não ligados a um produto específico) reconhecidos em grupos monitorados, de onde vieram e
         pra quais canais já foram repassados.
@@ -131,13 +127,13 @@ export default function Cupons() {
       {carregando ? (
         <p className="py-8 text-center text-sm text-muted-foreground">Carregando...</p>
       ) : cupons.length === 0 ? (
-        <p className="rounded-md border bg-card p-6 text-center text-sm text-muted-foreground shadow-sm">
+        <p className="rounded-lg border border-border bg-card p-6 text-center text-sm text-muted-foreground shadow-soft">
           Nenhum cupom capturado ainda.
         </p>
       ) : (
         <div className="flex flex-col gap-3">
           {cupons.map((cupom) => (
-            <div key={cupom.id} className="rounded-md border bg-card p-4 shadow-sm">
+            <div key={cupom.id} className="rounded-lg border border-border bg-card p-4 shadow-soft transition-shadow hover:shadow-soft-hover">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant={PLATAFORMAS_COM_DESPACHO.has(cupom.plataforma) ? "default" : "outline"}>
