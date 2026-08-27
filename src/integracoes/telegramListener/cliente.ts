@@ -12,6 +12,24 @@ import { logger } from "../../config/logger.js";
 const clientes = new Map<number, TelegramClient>();
 const loginsEmAndamento = new Map<number, { telefone: string; phoneCodeHash: string }>();
 
+/**
+ * Sem isso, uma chamada MTProto que trava (achado em produção 2026-08-27:
+ * `getDialogs` simplesmente nunca resolvia nem rejeitava — provavelmente
+ * flood-wait silencioso do Telegram) prende pra sempre quem chamou, e como
+ * `buscarTodosDialogosComStatus` no frontend usa `Promise.all` pras 4
+ * chamadas de status (WhatsApp + Telegram), a tela de "Grupos monitorados"
+ * do CanalDialog ficava carregando sem nunca terminar, mesmo com o
+ * WhatsApp respondendo normal. Timeout vira um erro claro (500) em vez de
+ * pendurar a requisição — o chamador no frontend já trata falha de
+ * qualquer uma das 4 chamadas com uma lista vazia, sem travar as outras.
+ */
+function comTimeout<T>(promessa: Promise<T>, ms: number, mensagem: string): Promise<T> {
+  return Promise.race([
+    promessa,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(mensagem)), ms)),
+  ]);
+}
+
 async function obterCliente(usuarioId: number): Promise<TelegramClient> {
   const existente = clientes.get(usuarioId);
   if (existente) return existente;
@@ -121,7 +139,11 @@ export interface DialogoTelegram {
 
 export async function listarDialogos(usuarioId: number): Promise<DialogoTelegram[]> {
   const c = await obterCliente(usuarioId);
-  const dialogos = await c.getDialogs({});
+  const dialogos = await comTimeout(
+    c.getDialogs({}),
+    20000,
+    "Telegram demorou demais pra listar os grupos (timeout de 20s) — tente de novo em instantes.",
+  );
   return dialogos
     .filter((d) => d.isGroup || d.isChannel)
     .map((d) => ({ id: d.id?.toString() ?? "", nome: d.title ?? d.name ?? "(sem nome)" }))
