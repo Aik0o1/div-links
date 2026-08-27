@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback, type ReactNode } from "react";
 import { toast } from "sonner";
-import { Sparkles, Save, Store, ExternalLink, Cookie as CookieIcon, CheckCircle2 } from "lucide-react";
+import { Sparkles, Save, Store, ShoppingBag, ExternalLink, Cookie as CookieIcon, CheckCircle2 } from "lucide-react";
 import { api, mensagemAmigavel } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -128,27 +129,73 @@ export default function ConfigAfiliados() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div>
       <PageHeader titulo="Config. Afiliados" subtitulo="Credenciais do Mercado Livre e da Shopee, e regras gerais de captura." />
-      <div
-        className={`mb-3.5 flex flex-wrap items-center justify-between gap-4 rounded-lg border-l-4 bg-card p-4 shadow-soft ${meliCookieConfigurado ? "border-l-success" : "border-l-text-faint"}`}
-      >
-        <div className="flex items-start gap-3">
-          <div
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${meliCookieConfigurado ? "bg-success-soft text-success" : "bg-muted text-muted-foreground"}`}
-          >
-            <Store className="h-4.5 w-4.5" />
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="flex flex-col rounded-xl border border-border bg-card p-6 shadow-soft">
+          <div className="mb-4 flex items-center gap-3">
+            <span
+              className={cn(
+                "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full",
+                meliCookieConfigurado ? "bg-success/10 text-success" : "bg-muted text-muted-foreground",
+              )}
+            >
+              <Store className="h-5 w-5" />
+            </span>
+            <div>
+              <h3 className="font-bold text-foreground">Mercado Livre</h3>
+              <p className="text-xs text-muted-foreground">{meliCookieConfigurado ? "Conectado" : "Não conectado"}</p>
+            </div>
           </div>
-          <div>
-            <h3 className="font-semibold">Mercado Livre</h3>
-            <p className="text-sm text-muted-foreground">
-              {meliCookieConfigurado
-                ? "Conectado — os links de afiliado são gerados automaticamente."
-                : "Ainda não conectado — sem isso, nenhum produto do Mercado Livre pode ser divulgado."}
-            </p>
-          </div>
+          <p className="mb-4 flex-1 text-sm text-muted-foreground">
+            {meliCookieConfigurado
+              ? "Os links de afiliado são gerados automaticamente."
+              : "Sem isso, nenhum produto do Mercado Livre pode ser divulgado."}
+          </p>
+          <Button className="w-full" onClick={abrirGuiaMeli}>
+            {meliCookieConfigurado ? "Reconectar" : "Conectar"}
+          </Button>
         </div>
-        <Button onClick={abrirGuiaMeli}>{meliCookieConfigurado ? "Reconectar" : "Conectar"}</Button>
+
+        <div className="flex flex-col rounded-xl border border-border bg-card p-6 shadow-soft">
+          <div className="mb-4 flex items-center gap-3">
+            <span
+              className={cn(
+                "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full",
+                shopeeConfigurado ? "bg-success/10 text-success" : "bg-muted text-muted-foreground",
+              )}
+            >
+              <ShoppingBag className="h-5 w-5" />
+            </span>
+            <div>
+              <h3 className="font-bold text-foreground">Shopee</h3>
+              <p className="text-xs text-muted-foreground">
+                {shopeeConfigurado ? `Configurada — App ID ${shopeeAppId}` : "Não configurada"}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-1 flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="shopee-appid">App ID</Label>
+              <Input id="shopee-appid" value={shopeeAppId} onChange={(e) => setShopeeAppId(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="shopee-secret">Secret</Label>
+              <Input
+                id="shopee-secret"
+                type="password"
+                placeholder={shopeeConfigurado ? "Deixe em branco pra manter o atual" : "Secret"}
+                value={shopeeSecret}
+                onChange={(e) => setShopeeSecret(e.target.value)}
+              />
+            </div>
+          </div>
+          <Button className="mt-3 w-full" onClick={salvarShopee} disabled={salvandoShopee || !shopeeAppId}>
+            <Save className="h-4 w-4" />
+            Salvar
+          </Button>
+        </div>
       </div>
 
       <Dialog open={guiaMeliAberto} onOpenChange={setGuiaMeliAberto}>
@@ -251,62 +298,31 @@ export default function ConfigAfiliados() {
         </DialogContent>
       </Dialog>
 
-      <div
-        className={`mb-6 flex flex-col gap-3.5 rounded-lg border-l-4 bg-card p-4 shadow-soft ${shopeeConfigurado ? "border-l-success" : "border-l-text-faint"}`}
-      >
-        <div>
-          <h3 className="font-semibold">
-            Shopee (API de afiliados)
-            <span className="ml-2 text-sm font-normal text-muted-foreground">
-              {shopeeConfigurado ? `Configurada — App ID ${shopeeAppId}` : "Não configurada"}
-            </span>
-          </h3>
-        </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="shopee-appid">App ID</Label>
-            <Input id="shopee-appid" className="w-44" value={shopeeAppId} onChange={(e) => setShopeeAppId(e.target.value)} />
+      <h3 className="mb-3 mt-8 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Configurações gerais</h3>
+
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-card p-6 shadow-soft">
+        <div className="flex items-center gap-3">
+          <span
+            className={cn(
+              "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full",
+              chamadaIAAtiva ? "bg-success/10 text-success" : "bg-muted text-muted-foreground",
+            )}
+          >
+            <Sparkles className="h-5 w-5" />
+          </span>
+          <div>
+            <h3 className="font-bold text-foreground">Chamada por IA</h3>
+            <p className="text-sm text-muted-foreground">
+              {chamadaIAAtiva
+                ? "Ativada — disparo (manual ou automático) gera a chamada via Ollama quando o produto não tiver uma."
+                : 'Desativada — disparo segue sem chamada (o botão "Gerar com IA" na aba Produtos continua funcionando normalmente).'}
+            </p>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="shopee-secret">Secret</Label>
-            <Input
-              id="shopee-secret"
-              type="password"
-              className="w-72"
-              placeholder={shopeeConfigurado ? "Deixe em branco pra manter o atual" : "Secret"}
-              value={shopeeSecret}
-              onChange={(e) => setShopeeSecret(e.target.value)}
-            />
-          </div>
-          <Button onClick={salvarShopee} disabled={salvandoShopee || !shopeeAppId}>
-            <Save className="h-4 w-4" />
-            Salvar
-          </Button>
         </div>
+        <Switch checked={chamadaIAAtiva} onCheckedChange={alternarChamadaIA} />
       </div>
 
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Configurações gerais</h3>
-
-      <div
-        className={`mb-3.5 flex flex-wrap items-center justify-between gap-4 rounded-lg border-l-4 bg-card p-4 shadow-soft ${chamadaIAAtiva ? "border-l-success" : "border-l-text-faint"}`}
-      >
-        <div>
-          <h3 className="flex items-center gap-1.5 font-semibold">
-            <Sparkles className="h-4 w-4 text-primary" />
-            Chamada por IA (frase de efeito nos produtos)
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            {chamadaIAAtiva
-              ? "Ativada — disparo (manual ou automático) gera a chamada via Ollama quando o produto não tiver uma."
-              : 'Desativada — disparo segue sem chamada (o botão "Gerar com IA" na aba Produtos continua funcionando normalmente).'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <Switch checked={chamadaIAAtiva} onCheckedChange={alternarChamadaIA} />
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-4 shadow-soft">
+      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-6 shadow-soft">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="desconto-minimo">Desconto mínimo real (%) pra capturar um produto</Label>
           <Input

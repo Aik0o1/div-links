@@ -138,7 +138,7 @@ export default function Canais() {
         </Table>
       </div>
 
-      <NichosBloco nichos={nichos} onMudou={carregar} />
+      <NichosBloco nichos={nichos} canais={canais} onMudou={carregar} />
 
       <CanalDialog
         aberto={dialogAberto}
