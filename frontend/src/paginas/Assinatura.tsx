@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
-import { CreditCard, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
+import { CreditCard, CheckCircle2, RefreshCw, XCircle, Lock } from "lucide-react";
 import { api, mensagemAmigavel } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import type { StatusAssinatura, PlanoInfo, PlanoId } from "@/lib/assinatura";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -111,13 +112,12 @@ export default function Assinatura({ onAtualizar }: { onAtualizar?: () => void }
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h2 className="mb-1 text-xl font-bold tracking-tight">Assinatura</h2>
       <p className="mb-4 max-w-2xl text-sm text-muted-foreground">
         Escolha o plano que combina com o tamanho da sua operação — dá pra trocar de plano quando quiser.
       </p>
 
       {assinatura?.status && (
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-md border bg-card p-4 shadow-sm">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card p-4 shadow-soft">
           <div className="flex items-center gap-2.5">
             <Badge className={`text-[11px] uppercase ${VARIANTE_STATUS[assinatura.status] ?? ""}`}>
               {ROTULO_STATUS[assinatura.status] ?? assinatura.status}
@@ -150,61 +150,81 @@ export default function Assinatura({ onAtualizar }: { onAtualizar?: () => void }
       )}
 
       {assinatura?.status === "isenta" ? (
-        <p className="rounded-md border bg-card p-4 text-sm text-muted-foreground shadow-sm">
+        <p className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground shadow-soft">
           Essa conta é isenta de cobrança — não precisa (e não dá pra) assinar um plano por aqui.
         </p>
       ) : (
-      <div className="grid gap-4 sm:grid-cols-3">
-        {planos.map((plano) => {
-          // "trial" NUNCA conta como "plano atual" pro botão — é só teste
-          // grátis, não uma assinatura paga de verdade (bug real: card do
-          // Básico mostrava "Plano atual" desabilitado pra quem tinha
-          // acabado de se cadastrar, dando a impressão de já estar
-          // assinado sem nunca ter pago nada). Continua destacando o card
-          // visualmente (é o plano "correspondente" ao trial), mas o botão
-          // deixa claro que é possível assinar de verdade a qualquer hora,
-          // encerrando o teste na hora.
-          const ehPlanoAtivo = assinatura?.plano === plano.id && assinatura.status === "ativa";
-          const emTrialNessePlano = assinatura?.plano === plano.id && assinatura.status === "trial";
-          return (
-            <div
-              key={plano.id}
-              className={`flex flex-col gap-3 rounded-lg border bg-card p-5 shadow-sm ${ehPlanoAtivo || emTrialNessePlano ? "border-primary ring-1 ring-primary" : ""}`}
-            >
-              <div>
-                <h3 className="text-lg font-bold">{plano.nome}</h3>
-                <p className="text-2xl font-bold text-primary">
-                  {formatarPrecoPlano(plano.precoCentavos)}
-                  <span className="text-sm font-normal text-muted-foreground">/mês</span>
-                </p>
-              </div>
-              <ul className="flex flex-1 flex-col gap-1.5 text-sm text-muted-foreground">
-                <li className="flex items-center gap-1.5">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-success" />
-                  {plano.limiteCanais} canal(is) de destino
-                </li>
-                <li className="flex items-center gap-1.5">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-success" />
-                  {plano.limiteGruposMonitorados} grupo(s) monitorado(s)
-                </li>
-                <li className="flex items-center gap-1.5">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-success" />
-                  Mercado Livre + Shopee
-                </li>
-                <li className="flex items-center gap-1.5">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-success" />
-                  Produtos ilimitados
-                </li>
-              </ul>
-              {emTrialNessePlano && <p className="text-xs text-warning">Em teste grátis — ainda não é uma assinatura paga.</p>}
-              <Button onClick={() => assinar(plano)} disabled={processando === plano.id || ehPlanoAtivo}>
-                <CreditCard className="h-4 w-4" />
-                {ehPlanoAtivo ? "Plano atual" : emTrialNessePlano ? "Assinar agora" : "Assinar"}
-              </Button>
-            </div>
-          );
-        })}
-      </div>
+        <>
+          <div className="grid gap-4 pt-3 sm:grid-cols-3">
+            {planos.map((plano) => {
+              // "trial" NUNCA conta como "plano atual" pro botão — é só teste
+              // grátis, não uma assinatura paga de verdade (bug real: card do
+              // Básico mostrava "Plano atual" desabilitado pra quem tinha
+              // acabado de se cadastrar, dando a impressão de já estar
+              // assinado sem nunca ter pago nada). Continua destacando o card
+              // visualmente (é o plano "correspondente" ao trial), mas o botão
+              // deixa claro que é possível assinar de verdade a qualquer hora,
+              // encerrando o teste na hora.
+              const ehPlanoAtivo = assinatura?.plano === plano.id && assinatura.status === "ativa";
+              const emTrialNessePlano = assinatura?.plano === plano.id && assinatura.status === "trial";
+              const recomendado = plano.id === "pro";
+              return (
+                <div
+                  key={plano.id}
+                  className={cn(
+                    "relative flex flex-col gap-3 rounded-2xl border border-border bg-card p-5 shadow-soft",
+                    recomendado && "border-2 border-primary shadow-soft-hover sm:-mt-2 sm:mb-2",
+                    (ehPlanoAtivo || emTrialNessePlano) && !recomendado && "border-primary ring-1 ring-primary",
+                  )}
+                >
+                  {recomendado && (
+                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground shadow-soft">
+                      Mais popular
+                    </span>
+                  )}
+                  <div>
+                    <h3 className="text-lg font-bold text-foreground">{plano.nome}</h3>
+                    <p className="text-2xl font-bold text-primary">
+                      {formatarPrecoPlano(plano.precoCentavos)}
+                      <span className="text-sm font-normal text-muted-foreground">/mês</span>
+                    </p>
+                  </div>
+                  <ul className="flex flex-1 flex-col gap-1.5 text-sm text-muted-foreground">
+                    <li className="flex items-center gap-1.5">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+                      {plano.limiteCanais} canal(is) de destino
+                    </li>
+                    <li className="flex items-center gap-1.5">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+                      {plano.limiteGruposMonitorados} grupo(s) monitorado(s)
+                    </li>
+                    <li className="flex items-center gap-1.5">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+                      Mercado Livre + Shopee
+                    </li>
+                    <li className="flex items-center gap-1.5">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+                      Produtos ilimitados
+                    </li>
+                  </ul>
+                  {emTrialNessePlano && <p className="text-xs text-warning">Em teste grátis — ainda não é uma assinatura paga.</p>}
+                  <Button
+                    variant={recomendado ? "default" : "outline"}
+                    onClick={() => assinar(plano)}
+                    disabled={processando === plano.id || ehPlanoAtivo}
+                  >
+                    <CreditCard className="h-4 w-4" />
+                    {ehPlanoAtivo ? "Plano atual" : emTrialNessePlano ? "Assinar agora" : "Assinar"}
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+          <p className="mt-6 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+            <Lock className="h-3.5 w-3.5" />
+            Pagamento 100% seguro, processado pelo Mercado Pago.
+          </p>
+        </>
       )}
     </div>
   );

@@ -15,7 +15,7 @@ import Login from "@/paginas/Login";
 import Signup from "@/paginas/Signup";
 import { useSessao } from "@/lib/auth";
 import { useAssinatura } from "@/lib/assinatura";
-import { LogOut } from "lucide-react";
+import { LogOut, Link2 } from "lucide-react";
 
 export type Aba =
   | "dashboard"
@@ -53,8 +53,13 @@ export default function App() {
   if (assinatura && !assinatura.acessoLiberado) {
     return (
       <div className="flex min-h-screen flex-col bg-background text-foreground">
-        <header className="flex items-center justify-between border-b px-4 py-3 sm:px-8">
-          <span className="text-sm font-semibold">PromoFlow</span>
+        <header className="flex items-center justify-between border-b border-border bg-card px-4 py-3 sm:px-8">
+          <span className="flex items-center gap-2 text-sm font-semibold">
+            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-primary">
+              <Link2 className="h-3.5 w-3.5 text-primary-foreground" />
+            </span>
+            PromoFlow
+          </span>
           <button
             type="button"
             onClick={logout}
@@ -65,6 +70,7 @@ export default function App() {
           </button>
         </header>
         <main className="flex-1 p-4 sm:p-8">
+          <h2 className="mb-1 text-lg font-bold tracking-tight text-foreground">Assinatura</h2>
           <p className="mx-auto mb-4 max-w-3xl text-sm text-muted-foreground">
             Sua assinatura não está ativa — escolha um plano pra continuar usando o painel.
           </p>
