@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { QrCode, List, Copy } from "lucide-react";
 import { api, mensagemAmigavel } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/TopBar";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface StatusWhatsapp {
@@ -81,6 +82,7 @@ export default function ConfigWhatsapp() {
 
   return (
     <div className="mx-auto max-w-3xl">
+      <PageHeader titulo="Config. WhatsApp" subtitulo="Conecte o número via QR code e veja os grupos que ele participa." />
       {status && (
         <div
           className={`mb-3.5 flex flex-wrap items-center justify-between gap-4 rounded-lg border-l-4 bg-card p-4 shadow-soft ${status.conectado ? "border-l-success" : "border-l-text-faint"}`}

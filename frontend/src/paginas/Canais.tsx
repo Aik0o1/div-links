@@ -4,6 +4,7 @@ import { Plus, Settings2, Trash2 } from "lucide-react";
 import { api, mensagemAmigavel } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/TopBar";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -67,12 +68,16 @@ export default function Canais() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
-        <Button onClick={abrirCriar}>
-          <Plus className="h-4 w-4" />
-          Adicionar canal
-        </Button>
-      </div>
+      <PageHeader
+        titulo="Canais de destino"
+        subtitulo="Gerencie os grupos e canais onde as promoções são distribuídas."
+        acao={
+          <Button onClick={abrirCriar}>
+            <Plus className="h-4 w-4" />
+            Adicionar canal
+          </Button>
+        }
+      />
 
       <div className="mb-8 overflow-hidden rounded-lg border border-border bg-card shadow-soft">
         <Table>

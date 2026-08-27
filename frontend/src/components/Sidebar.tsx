@@ -39,11 +39,11 @@ export function Sidebar({
   return (
     <aside className="sticky top-0 z-20 flex w-full flex-shrink-0 flex-col gap-4 border-b border-border bg-card p-4 lg:h-screen lg:w-[260px] lg:gap-6 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:p-5">
       <div className="flex items-center gap-3 px-1.5">
-        <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary shadow-soft">
-          <Link2 className="h-4.5 w-4.5 text-primary-foreground" />
+        <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-primary shadow-soft">
+          <Link2 className="h-5 w-5 text-primary-foreground" />
         </span>
         <div>
-          <h1 className="text-[17px] font-bold leading-tight tracking-tight text-foreground">PromoFlow</h1>
+          <h1 className="text-lg font-extrabold leading-tight tracking-tight text-primary">PromoFlow</h1>
           <p className="text-xs text-muted-foreground">Automação de afiliados</p>
         </div>
       </div>

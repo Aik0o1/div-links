@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import type { StatusAssinatura, PlanoInfo, PlanoId } from "@/lib/assinatura";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/TopBar";
 
 const ROTULO_STATUS: Record<string, string> = {
   trial: "Período grátis",
@@ -112,9 +113,10 @@ export default function Assinatura({ onAtualizar }: { onAtualizar?: () => void }
 
   return (
     <div className="mx-auto max-w-3xl">
-      <p className="mb-4 max-w-2xl text-sm text-muted-foreground">
-        Escolha o plano que combina com o tamanho da sua operação — dá pra trocar de plano quando quiser.
-      </p>
+      <PageHeader
+        titulo="Assinatura"
+        subtitulo="Escolha o plano que combina com o tamanho da sua operação — dá pra trocar quando quiser."
+      />
 
       {assinatura?.status && (
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card p-4 shadow-soft">

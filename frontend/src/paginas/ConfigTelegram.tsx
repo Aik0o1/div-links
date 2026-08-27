@@ -4,6 +4,7 @@ import { LogIn } from "lucide-react";
 import { api, mensagemAmigavel } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/TopBar";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface StatusTelegramListener {
@@ -98,6 +99,7 @@ export default function ConfigTelegram() {
 
   return (
     <div className="mx-auto max-w-3xl">
+      <PageHeader titulo="Config. Telegram" subtitulo="Conecte a conta que vai monitorar grupos de cupons e produtos." />
       {status && (
         <div
           className={`flex flex-wrap items-center justify-between gap-4 rounded-lg border-l-4 bg-card p-4 shadow-soft ${ativo ? "border-l-success" : "border-l-text-faint"}`}

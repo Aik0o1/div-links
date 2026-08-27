@@ -2,7 +2,9 @@ import { useEffect, useState, useCallback } from "react";
 import { RefreshCw, CheckCircle2, XCircle, AlertTriangle, Send, Package, Clock, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { api, mensagemAmigavel } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/TopBar";
 import { GraficoDisparos, type PontoHora } from "@/components/GraficoDisparos";
 import type { Aba } from "@/App";
 import type { DisparoAutomatico } from "@/lib/disparoAutomatico";
@@ -58,12 +60,16 @@ export default function Dashboard({
 
   return (
     <div className="mx-auto max-w-5xl">
-      <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
-        <Button variant="outline" size="sm" onClick={atualizar}>
-          <RefreshCw className="h-4 w-4" />
-          Atualizar
-        </Button>
-      </div>
+      <PageHeader
+        titulo="Dashboard"
+        subtitulo="Métricas de hoje e status em tempo real do disparo automático."
+        acao={
+          <Button variant="outline" size="sm" onClick={atualizar}>
+            <RefreshCw className="h-4 w-4" />
+            Atualizar
+          </Button>
+        }
+      />
 
       {disparo.itensPreReq &&
         (disparo.pendentesObrigatorios.length === 0 ? (
@@ -118,16 +124,16 @@ export default function Dashboard({
               titulo="Enviados hoje"
               valor={metricas.enviadosHoje}
               Icon={Send}
-              destaque={metricas.enviadosHoje > 0 ? "success" : undefined}
+              cor={metricas.enviadosHoje > 0 ? "success" : "primary"}
             />
             <CardMetrica
               titulo="Falhas hoje"
               valor={metricas.falhasHoje}
               Icon={XCircle}
-              destaque={metricas.falhasHoje > 0 ? "destructive" : undefined}
+              cor={metricas.falhasHoje > 0 ? "destructive" : "primary"}
             />
-            <CardMetrica titulo="Capturados hoje" valor={metricas.capturadosHoje} Icon={Package} />
-            <CardMetrica titulo="Fila pendente" valor={metricas.pendentes} Icon={Clock} />
+            <CardMetrica titulo="Capturados hoje" valor={metricas.capturadosHoje} Icon={Package} cor="primary" />
+            <CardMetrica titulo="Fila pendente" valor={metricas.pendentes} Icon={Clock} cor="warning" />
           </div>
           <div className="mb-3.5">
             <GraficoDisparos porHora={metricas.porHora} />
@@ -152,22 +158,23 @@ export default function Dashboard({
   );
 }
 
-function CardMetrica({
-  titulo,
-  valor,
-  Icon,
-  destaque,
-}: {
-  titulo: string;
-  valor: number;
-  Icon: LucideIcon;
-  destaque?: "success" | "destructive";
-}) {
+type Cor = "success" | "destructive" | "warning" | "primary";
+
+const CHIP_COR: Record<Cor, string> = {
+  success: "bg-success/10 text-success",
+  destructive: "bg-destructive/10 text-destructive",
+  warning: "bg-warning/10 text-warning",
+  primary: "bg-primary/10 text-primary",
+};
+
+function CardMetrica({ titulo, valor, Icon, cor }: { titulo: string; valor: number; Icon: LucideIcon; cor: Cor }) {
   return (
-    <div className={cnBorda(destaque)}>
-      <div className="mb-1.5 flex items-center gap-1.5 text-muted-foreground">
-        <Icon className="h-3.5 w-3.5" />
-        <h4 className="text-xs font-semibold uppercase tracking-wide">{titulo}</h4>
+    <div className="rounded-xl border border-border bg-card p-4 shadow-soft transition-shadow hover:shadow-soft-hover">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{titulo}</h4>
+        <span className={cn("flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full", CHIP_COR[cor])}>
+          <Icon className="h-3.5 w-3.5" />
+        </span>
       </div>
       <p className="text-3xl font-bold text-foreground">{valor}</p>
     </div>
@@ -186,19 +193,14 @@ function CardStatus({
   valorErro?: string;
 }) {
   return (
-    <div className={cnBorda(ok ? "success" : "destructive")}>
-      <div className="mb-1.5 flex items-center gap-1.5">
-        {ok ? <CheckCircle2 className="h-3.5 w-3.5 text-success" /> : <XCircle className="h-3.5 w-3.5 text-destructive" />}
+    <div className="rounded-xl border border-border bg-card p-4 shadow-soft transition-shadow hover:shadow-soft-hover">
+      <div className="mb-3 flex items-center justify-between gap-2">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{titulo}</h4>
+        <span className={cn("flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full", CHIP_COR[ok ? "success" : "destructive"])}>
+          {ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
+        </span>
       </div>
       <p className="font-semibold text-foreground">{ok ? valorOk : valorErro}</p>
     </div>
   );
-}
-
-function cnBorda(destaque?: "success" | "destructive") {
-  const base = "rounded-lg border-l-4 bg-card p-4 shadow-soft transition-shadow hover:shadow-soft-hover";
-  if (destaque === "success") return `${base} border-l-success`;
-  if (destaque === "destructive") return `${base} border-l-destructive`;
-  return `${base} border-l-text-faint`;
 }

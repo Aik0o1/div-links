@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Download, Trash2 } from "lucide-react";
 import { api, mensagemAmigavel } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/TopBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ProdutoCard } from "./produtos/ProdutoCard";
@@ -45,12 +46,16 @@ export default function Produtos() {
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
-        <Button variant="destructive" onClick={limparTudo} disabled={limpando}>
-          <Trash2 className="h-4 w-4" />
-          Limpar todos os produtos
-        </Button>
-      </div>
+      <PageHeader
+        titulo="Produtos"
+        subtitulo="Capture e gerencie o catálogo por nicho, com chamada e disparo por canal."
+        acao={
+          <Button variant="destructive" onClick={limparTudo} disabled={limpando}>
+            <Trash2 className="h-4 w-4" />
+            Limpar todos os produtos
+          </Button>
+        }
+      />
 
       <Tabs value={abaAtiva} onValueChange={setAbaAtiva}>
         <TabsList className="mb-4 h-auto flex-wrap justify-start gap-1 bg-transparent p-0">

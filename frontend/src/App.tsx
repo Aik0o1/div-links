@@ -70,8 +70,7 @@ export default function App() {
           </button>
         </header>
         <main className="flex-1 p-4 sm:p-8">
-          <h2 className="mb-1 text-lg font-bold tracking-tight text-foreground">Assinatura</h2>
-          <p className="mx-auto mb-4 max-w-3xl text-sm text-muted-foreground">
+          <p className="mx-auto mb-4 max-w-3xl rounded-lg border-l-4 border-l-warning bg-warning-soft p-3.5 text-sm text-foreground">
             Sua assinatura não está ativa — escolha um plano pra continuar usando o painel.
           </p>
           <Assinatura onAtualizar={recarregarAssinatura} />

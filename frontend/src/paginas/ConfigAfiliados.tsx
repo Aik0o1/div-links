@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { PageHeader } from "@/components/TopBar";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 /** Círculo numerado — usado nos passos dos guias (Mercado Livre, etc.). */
@@ -128,6 +129,7 @@ export default function ConfigAfiliados() {
 
   return (
     <div className="mx-auto max-w-3xl">
+      <PageHeader titulo="Config. Afiliados" subtitulo="Credenciais do Mercado Livre e da Shopee, e regras gerais de captura." />
       <div
         className={`mb-3.5 flex flex-wrap items-center justify-between gap-4 rounded-lg border-l-4 bg-card p-4 shadow-soft ${meliCookieConfigurado ? "border-l-success" : "border-l-text-faint"}`}
       >

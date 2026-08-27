@@ -4,6 +4,7 @@ import { Satellite, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { api, mensagemAmigavel } from "@/lib/api";
 import { buscarGruposMonitoradosDisponiveis, type GrupoMonitoradoOpcao } from "@/lib/gruposMonitorados";
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/TopBar";
 import type { CanalRow } from "@/paginas/canais/tipos";
 
 interface CodigoExtraido {
@@ -119,10 +120,10 @@ export default function Cupons() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <p className="mb-4 max-w-2xl text-sm text-muted-foreground">
-        Cupons genéricos (não ligados a um produto específico) reconhecidos em grupos monitorados, de onde vieram e
-        pra quais canais já foram repassados.
-      </p>
+      <PageHeader
+        titulo="Cupons capturados"
+        subtitulo="Cupons genéricos reconhecidos em grupos monitorados, de onde vieram e pra quais canais já foram repassados."
+      />
 
       {carregando ? (
         <p className="py-8 text-center text-sm text-muted-foreground">Carregando...</p>
