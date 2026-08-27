@@ -17,12 +17,6 @@ interface Metricas {
   porHora: PontoHora[];
 }
 
-interface StatusSistema {
-  db: boolean;
-  redis: boolean;
-  telegram: { configurado: boolean };
-}
-
 const ABA_POR_ID: Record<string, Aba> = {
   canais: "canais",
   whatsapp: "whatsapp",
@@ -37,13 +31,11 @@ export default function Dashboard({
   onNavegar: (aba: Aba) => void;
   disparo: DisparoAutomatico;
 }) {
-  const [status, setStatus] = useState<StatusSistema | null>(null);
   const [metricas, setMetricas] = useState<Metricas | null>(null);
 
   const carregarTudo = useCallback(async () => {
     try {
-      const [s, m] = await Promise.all([api<StatusSistema>("/status"), api<Metricas>("/dashboard/metricas")]);
-      setStatus(s);
+      const m = await api<Metricas>("/dashboard/metricas");
       setMetricas(m);
     } catch (err) {
       toast.error(mensagemAmigavel(err));
@@ -140,20 +132,6 @@ export default function Dashboard({
           </div>
         </>
       )}
-
-      <h3 className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status técnico</h3>
-      {status && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <CardStatus titulo="Banco de dados" ok={status.db} />
-          <CardStatus titulo="Redis" ok={status.redis} />
-          <CardStatus
-            titulo="Telegram"
-            ok={status.telegram.configurado}
-            valorOk="bot configurado"
-            valorErro="TELEGRAM_BOT_TOKEN ausente"
-          />
-        </div>
-      )}
     </div>
   );
 }
@@ -177,30 +155,6 @@ function CardMetrica({ titulo, valor, Icon, cor }: { titulo: string; valor: numb
         </span>
       </div>
       <p className="text-3xl font-bold text-foreground">{valor}</p>
-    </div>
-  );
-}
-
-function CardStatus({
-  titulo,
-  ok,
-  valorOk = "conectado",
-  valorErro = "falhou",
-}: {
-  titulo: string;
-  ok: boolean;
-  valorOk?: string;
-  valorErro?: string;
-}) {
-  return (
-    <div className="rounded-xl border border-border bg-card p-4 shadow-soft transition-shadow hover:shadow-soft-hover">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{titulo}</h4>
-        <span className={cn("flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full", CHIP_COR[ok ? "success" : "destructive"])}>
-          {ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
-        </span>
-      </div>
-      <p className="font-semibold text-foreground">{ok ? valorOk : valorErro}</p>
     </div>
   );
 }
