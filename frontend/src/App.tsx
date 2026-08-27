@@ -6,7 +6,6 @@ import Canais from "@/paginas/Canais";
 import ConfigAfiliados from "@/paginas/ConfigAfiliados";
 import ConfigWhatsapp from "@/paginas/ConfigWhatsapp";
 import ConfigTelegram from "@/paginas/ConfigTelegram";
-import GruposMonitorados from "@/paginas/GruposMonitorados";
 import Produtos from "@/paginas/Produtos";
 import Cupons from "@/paginas/Cupons";
 import Assinatura from "@/paginas/Assinatura";
@@ -22,7 +21,6 @@ export type Aba =
   | "whatsapp"
   | "telegram"
   | "canais"
-  | "monitorados"
   | "produtos"
   | "cupons"
   | "assinatura";
@@ -82,7 +80,6 @@ export default function App() {
         {aba === "whatsapp" && <ConfigWhatsapp />}
         {aba === "telegram" && <ConfigTelegram />}
         {aba === "canais" && <Canais />}
-        {aba === "monitorados" && <GruposMonitorados />}
         {aba === "produtos" && <Produtos />}
         {aba === "cupons" && <Cupons />}
         {aba === "assinatura" && <Assinatura />}

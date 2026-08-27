@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { mensagemAmigavel, api } from "@/lib/api";
-import { buscarGruposMonitoradosDisponiveis, type GrupoMonitoradoOpcao } from "@/lib/gruposMonitorados";
+import { buscarTodosDialogosComStatus, marcarGruposComoMonitorados, type DialogoComStatus } from "@/lib/gruposMonitorados";
 import {
   Dialog,
   DialogContent,
@@ -57,16 +57,26 @@ function estadoInicial(canal: CanalRow | null): FormState {
   };
 }
 
+const NICHO_PADRAO_GRUPO = "geral";
+
 export function CanalDialog({ aberto, onFechar, canal, nichos, onSalvo }: Props) {
   const [form, setForm] = useState<FormState>(() => estadoInicial(canal));
   const [salvando, setSalvando] = useState(false);
-  const [gruposDisponiveis, setGruposDisponiveis] = useState<GrupoMonitoradoOpcao[]>([]);
+  const [gruposDisponiveis, setGruposDisponiveis] = useState<DialogoComStatus[]>([]);
+  // Nicho escolhido pra cada grupo marcado (não só os já monitorados antes)
+  // — pré-preenchido com o nicho global já configurado, quando existir.
+  const [nichoPorGrupo, setNichoPorGrupo] = useState<Record<string, string>>({});
   const editando = canal !== null;
 
   useEffect(() => {
     if (aberto) {
       setForm(estadoInicial(canal));
-      buscarGruposMonitoradosDisponiveis().then(setGruposDisponiveis);
+      buscarTodosDialogosComStatus().then((grupos) => {
+        setGruposDisponiveis(grupos);
+        const mapa: Record<string, string> = {};
+        for (const g of grupos) if (g.nichoAtual) mapa[g.id] = g.nichoAtual;
+        setNichoPorGrupo(mapa);
+      });
     }
   }, [aberto, canal]);
 
@@ -98,11 +108,31 @@ export function CanalDialog({ aberto, onFechar, canal, nichos, onSalvo }: Props)
       ...f,
       gruposSelecionados: marcado ? [...f.gruposSelecionados, id] : f.gruposSelecionados.filter((g) => g !== id),
     }));
+    if (marcado) {
+      setNichoPorGrupo((m) => (m[id] ? m : { ...m, [id]: NICHO_PADRAO_GRUPO }));
+    }
+  }
+
+  function mudarNichoGrupo(id: string, nicho: string) {
+    setNichoPorGrupo((m) => ({ ...m, [id]: nicho }));
   }
 
   async function salvar() {
     setSalvando(true);
     try {
+      // Antes de salvar o canal em si, garante que todo grupo marcado aqui
+      // está mesmo sendo monitorado globalmente (merge, nunca substitui a
+      // lista de outro canal — ver marcarGruposComoMonitorados). É isso que
+      // permite escolher/registrar um grupo novo direto daqui, sem passar
+      // por uma aba separada antes.
+      const gruposParaMarcar = form.gruposSelecionados
+        .map((id) => gruposDisponiveis.find((g) => g.id === id))
+        .filter((g): g is DialogoComStatus => g !== undefined)
+        .map((g) => ({ id: g.id, nome: g.nome, plataforma: g.plataforma, nicho: nichoPorGrupo[g.id] ?? NICHO_PADRAO_GRUPO }));
+      if (gruposParaMarcar.length > 0) {
+        await marcarGruposComoMonitorados(gruposParaMarcar);
+      }
+
       const categoriasPermitidas = form.geral ? [] : form.nichosSelecionados;
       if (editando) {
         await api(`/canais/${canal.id}`, {
@@ -315,27 +345,47 @@ export function CanalDialog({ aberto, onFechar, canal, nichos, onSalvo }: Props)
             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Grupos monitorados
             </span>
+            <p className="text-xs text-muted-foreground">
+              Marque de quais grupos (WhatsApp ou Telegram, de conta já conectada) esse canal recebe cupom/produto —
+              marcar aqui já ativa o monitoramento desse grupo, com o nicho escolhido ao lado.
+            </p>
             {gruposDisponiveis.length === 0 ? (
               <p className="text-xs text-muted-foreground">
-                Nenhum grupo monitorado configurado ainda (ver aba Grupos monitorados).
+                Nenhum grupo encontrado — conecte o WhatsApp e/ou o monitor de Telegram primeiro (aba Status).
               </p>
             ) : (
-              <div className="flex max-h-36 flex-col gap-1 overflow-y-auto">
-                {gruposDisponiveis.map((g) => (
-                  <label key={g.id} className="flex cursor-pointer items-center gap-2 text-sm font-normal">
-                    <Checkbox
-                      checked={form.gruposSelecionados.includes(g.id)}
-                      onCheckedChange={(v) => alternarGrupo(g.id, v === true)}
-                    />
-                    {g.nome}
-                    <span className="text-xs text-muted-foreground capitalize">({g.plataforma})</span>
-                  </label>
-                ))}
+              <div className="flex max-h-48 flex-col gap-1.5 overflow-y-auto">
+                {gruposDisponiveis.map((g) => {
+                  const marcado = form.gruposSelecionados.includes(g.id);
+                  return (
+                    <div key={g.id} className="flex items-center justify-between gap-2">
+                      <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-sm font-normal">
+                        <Checkbox checked={marcado} onCheckedChange={(v) => alternarGrupo(g.id, v === true)} />
+                        <span className="truncate">{g.nome}</span>
+                        <span className="flex-shrink-0 text-xs text-muted-foreground capitalize">({g.plataforma})</span>
+                      </label>
+                      {marcado && (
+                        <Select value={nichoPorGrupo[g.id] ?? NICHO_PADRAO_GRUPO} onValueChange={(v) => mudarNichoGrupo(g.id, v)}>
+                          <SelectTrigger className="h-7 w-32 flex-shrink-0 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {nichos.map((n) => (
+                              <SelectItem key={n.id} value={n.id}>
+                                {n.nome}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
             <p className="text-xs text-muted-foreground">
-              Nenhum marcado = sem restrição por grupo (nicho/origem mandam). Grupo marcado aqui entra mesmo se o
-              nicho dele não estiver liberado acima.
+              Nenhum marcado = sem restrição por grupo (nicho/origem acima mandam). Grupo marcado aqui entra nesse
+              canal mesmo se o nicho dele não estiver liberado acima.
             </p>
           </div>
         </div>
