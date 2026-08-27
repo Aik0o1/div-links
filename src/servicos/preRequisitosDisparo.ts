@@ -1,5 +1,10 @@
 import * as canaisRepo from "../repositorios/canais.js";
-import { obterShopeeConfig, obterMeliSessionCookie, obterMeliAfiliadoConfig } from "../repositorios/configuracoes.js";
+import {
+  obterShopeeConfig,
+  obterMeliSessionCookie,
+  obterMeliAfiliadoConfig,
+  obterMeliCookieExpirado,
+} from "../repositorios/configuracoes.js";
 import { env } from "../config/env.js";
 import { statusInstancia } from "../integracoes/evolutionApi/instancia.js";
 
@@ -93,6 +98,22 @@ export async function avaliarPreRequisitosDisparo(usuarioId: number): Promise<It
       dica: "Algum canal ativo aceita produtos do Mercado Livre — conecte sua conta em Config. Afiliados.",
       aba: "afiliados",
     });
+
+    // Diferente do item acima (só confere se tag+cookie EXISTEM) — esse
+    // pega o cookie que existe mas parou de funcionar (expirado ou
+    // bloqueado pelo ML), flagrado de verdade na última tentativa real de
+    // uso (ver marcarMeliCookieExpirado em meliHttp.ts). Só faz sentido
+    // checar se o item acima já está ok (senão é redundante com ele).
+    if (meliOk && (await obterMeliCookieExpirado(usuarioId))) {
+      itens.push({
+        id: "meli-sessao-valida",
+        label: "Sessão do Mercado Livre válida",
+        ok: false,
+        obrigatorio: true,
+        dica: "O cookie salvo parou de funcionar (sessão expirada ou bloqueada pelo ML) — renove em Config. Afiliados.",
+        aba: "afiliados",
+      });
+    }
   }
 
   if (temCanalShopee) {

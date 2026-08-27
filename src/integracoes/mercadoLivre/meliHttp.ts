@@ -14,7 +14,10 @@ export class SessaoMeliExpiradaError extends Error {
 
 async function cookieObrigatorio(usuarioId: number): Promise<string> {
   const cookie = await configuracoesRepo.obterMeliSessionCookie(usuarioId);
-  if (!cookie) throw new SessaoMeliExpiradaError();
+  if (!cookie) {
+    await configuracoesRepo.marcarMeliCookieExpirado(usuarioId);
+    throw new SessaoMeliExpiradaError();
+  }
   return cookie;
 }
 
@@ -54,8 +57,15 @@ export async function buscarPaginaMeli(usuarioId: number, url: string): Promise<
     urlFinal.includes("suspicious-traffic") ||
     urlFinal.includes("/captcha/wall")
   ) {
+    await configuracoesRepo.marcarMeliCookieExpirado(usuarioId);
     throw new SessaoMeliExpiradaError();
   }
+
+  // Passou sem cair em nenhuma parede de verificação — prova que a sessão
+  // está funcionando agora, então limpa qualquer aviso de cookie vencido
+  // que tenha ficado de uma falha anterior (auto-recuperação, sem precisar
+  // que o usuário faça nada se o problema já não existe mais).
+  await configuracoesRepo.limparMeliCookieExpirado(usuarioId);
 
   const html = await resposta.text();
   return { html, urlFinal };
@@ -95,7 +105,10 @@ export async function criarLinkOficial(usuarioId: number, urlProduto: string, ta
     },
   });
   const html = await paginaLinkbuilder.text();
-  if (paginaLinkbuilder.url.includes("/gz/account-verification")) throw new SessaoMeliExpiradaError();
+  if (paginaLinkbuilder.url.includes("/gz/account-verification")) {
+    await configuracoesRepo.marcarMeliCookieExpirado(usuarioId);
+    throw new SessaoMeliExpiradaError();
+  }
 
   const csrfMatch = html.match(/name="csrf-token"\s+content="([^"]+)"/);
   if (!csrfMatch) {

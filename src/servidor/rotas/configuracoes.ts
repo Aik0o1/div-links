@@ -55,6 +55,10 @@ rotaConfiguracoes.put("/mercado-livre", async (req, res) => {
   // ou salvar a tag antes de ter um cookie ainda).
   if (typeof cookie === "string" && cookie.trim()) {
     await configuracoesRepo.definirMeliSessionCookie(req.usuarioId, cookie.trim());
+    // Cookie novo — limpa qualquer aviso de "cookie vencido" que estava
+    // sinalizado (ver marcarMeliCookieExpirado); se ainda não funcionar, a
+    // próxima tentativa real de uso marca de novo sozinha.
+    await configuracoesRepo.limparMeliCookieExpirado(req.usuarioId);
   }
   const cookieAtual = await configuracoesRepo.obterMeliSessionCookie(req.usuarioId);
   res.json({ tag: tag.trim(), cookieConfigurado: !!cookieAtual });

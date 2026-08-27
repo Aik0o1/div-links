@@ -195,6 +195,30 @@ export async function definirMeliSessionCookie(usuarioId: number, cookie: string
   await definir(usuarioId, "meli_session_cookie", criptografarConfig(cookie));
 }
 
+/**
+ * Marca/limpa que a sessão do ML foi flagrada como expirada/bloqueada
+ * (`SessaoMeliExpiradaError`, ver meliHttp.ts) — usado pra avisar na aba
+ * Dashboard (pré-requisitos) mesmo quando isso acontece num fluxo em
+ * segundo plano (captura de grupo monitorado), que só loga erro sem
+ * ninguém necessariamente estar olhando o toast na hora. Marcado no
+ * catch de quem chama o ML; limpo automaticamente na próxima chamada que
+ * funcionar, ou ao salvar um cookie novo (ver rotas/afiliados.ts).
+ */
+export async function marcarMeliCookieExpirado(usuarioId: number): Promise<void> {
+  await definir(usuarioId, "meli_cookie_expirado_em", new Date().toISOString());
+}
+
+export async function limparMeliCookieExpirado(usuarioId: number): Promise<void> {
+  await pool.query("DELETE FROM configuracoes WHERE usuario_id = $1 AND chave = $2", [
+    usuarioId,
+    "meli_cookie_expirado_em",
+  ]);
+}
+
+export async function obterMeliCookieExpirado(usuarioId: number): Promise<boolean> {
+  return (await obter(usuarioId, "meli_cookie_expirado_em")) !== null;
+}
+
 export interface MeliAfiliadoConfig {
   /** Tag de afiliado (ex.: "seuusuario20220908145641") — vem junto de qualquer link gerado no painel de afiliados do ML, nunca muda. */
   tag: string;
