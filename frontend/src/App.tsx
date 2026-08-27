@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { Sidebar } from "@/components/Sidebar";
+import { TopBar } from "@/components/TopBar";
+import { useDisparoAutomatico } from "@/lib/disparoAutomatico";
 import Dashboard from "@/paginas/Dashboard";
 import Canais from "@/paginas/Canais";
 import ConfigAfiliados from "@/paginas/ConfigAfiliados";
@@ -30,6 +32,8 @@ export default function App() {
   const { usuario, carregando: carregandoSessao, definirUsuario, logout } = useSessao();
   const { assinatura, carregando: carregandoAssinatura, recarregar: recarregarAssinatura } = useAssinatura(!!usuario);
   const [telaCadastro, setTelaCadastro] = useState(false);
+  const podeUsarPainel = !!usuario && !carregandoAssinatura && (!assinatura || assinatura.acessoLiberado);
+  const disparo = useDisparoAutomatico(podeUsarPainel);
 
   if (carregandoSessao || (usuario && carregandoAssinatura)) {
     return <div className="flex min-h-screen items-center justify-center bg-background" />;
@@ -75,7 +79,8 @@ export default function App() {
     <div className="flex min-h-screen flex-col bg-background text-foreground lg:flex-row">
       <Sidebar abaAtiva={aba} onMudarAba={setAba} usuario={usuario} onSair={logout} />
       <main className="min-w-0 flex-1 p-4 sm:p-8">
-        {aba === "dashboard" && <Dashboard onNavegar={setAba} />}
+        <TopBar aba={aba} disparo={disparo} />
+        {aba === "dashboard" && <Dashboard onNavegar={setAba} disparo={disparo} />}
         {aba === "afiliados" && <ConfigAfiliados />}
         {aba === "whatsapp" && <ConfigWhatsapp />}
         {aba === "telegram" && <ConfigTelegram />}
