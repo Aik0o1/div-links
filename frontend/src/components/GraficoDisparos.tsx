@@ -35,7 +35,7 @@ export function GraficoDisparos({ porHora }: { porHora: PontoHora[] }) {
 
   if (totalDia === 0) {
     return (
-      <div className="rounded-md border bg-card p-5 shadow-sm">
+      <div className="rounded-lg border border-border bg-card p-5 shadow-soft">
         <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Disparos por hora (hoje)
         </h3>
@@ -55,7 +55,7 @@ export function GraficoDisparos({ porHora }: { porHora: PontoHora[] }) {
   const baseY = MARGEM_TOPO + ALTURA_PLOT;
 
   return (
-    <div className="relative rounded-md border bg-card p-5 shadow-sm">
+    <div className="relative rounded-lg border border-border bg-card p-5 shadow-soft">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2.5">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Disparos por hora (hoje)
