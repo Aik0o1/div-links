@@ -45,8 +45,8 @@ export default function Signup({
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
-          <span className="flex h-11 w-11 items-center justify-center rounded-[13px] bg-gradient-to-br from-primary to-[#b3a6ff] shadow-[0_4px_14px_rgba(106,92,255,0.5)]">
-            <Link2 className="h-5 w-5 text-white" />
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary shadow-soft">
+            <Link2 className="h-5 w-5 text-primary-foreground" />
           </span>
           <CardTitle className="mt-2 text-xl">PromoFlow</CardTitle>
           <CardDescription>Crie sua conta pra começar</CardDescription>
