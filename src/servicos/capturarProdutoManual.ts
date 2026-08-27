@@ -44,10 +44,15 @@ export async function capturarProdutoManual(
   let urlFinalProduto = urlResolvida;
 
   if (!dados) {
-    const urlAchada = await buscarProdutoEmPerfilSocial(usuarioId, urlResolvida);
-    if (urlAchada) {
-      dados = await buscarDadosProduto(usuarioId, urlAchada);
-      if (dados) urlFinalProduto = urlAchada;
+    // `achado.dados` já vem do JSON da própria página de perfil social —
+    // evita uma segunda requisição pra página do produto, que desde
+    // 2026-08-27 cai numa parede de captcha do ML mesmo com sessão válida
+    // (ver capturarProdutoTerceiro.ts / meliHttp.ts). Só tenta a página do
+    // produto como último recurso se o JSON não trouxe os dados (raro).
+    const achado = await buscarProdutoEmPerfilSocial(usuarioId, urlResolvida);
+    if (achado) {
+      urlFinalProduto = achado.url;
+      dados = achado.dados ?? (await buscarDadosProduto(usuarioId, achado.url));
     }
   }
 

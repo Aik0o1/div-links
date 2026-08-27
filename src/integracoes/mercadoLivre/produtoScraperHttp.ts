@@ -84,6 +84,40 @@ function limparUrlProduto(url: string): string {
 }
 
 /**
+ * Monta a URL de imagem do CDN do ML a partir só do id da foto (achado no
+ * JSON do polycard, ver buscarProdutoEmPerfilSocial) — não tem doc oficial
+ * pra esse formato, testado manualmente em produção (2026-08-27) até achar
+ * uma combinação que devolve um webp de verdade (não um placeholder): `NQ`
+ * (sem limite de qualidade) + `NP_2X` (retina) + sufixo `-F` (resolução
+ * "full", a maior das testadas — as demais como `-O`/`-V` também funcionam,
+ * só em resolução menor).
+ */
+function montarUrlImagem(pictureId: string): string {
+  return `https://http2.mlstatic.com/D_NQ_NP_2X_${pictureId}-F.webp`;
+}
+
+/**
+ * Varre todo campo `"url":"https:...` do HTML (texto puro, sem regex — ver
+ * comentário em buscarProdutoEmPerfilSocial) até achar um cujo VALOR
+ * contenha `procurado` — é assim que se acha o link "Ir para produto"
+ * (dentro de `action_links`) sem depender de posição fixa no documento.
+ */
+function acharValorDeUrlContendo(html: string, procurado: string): { valor: string; indice: number } | null {
+  const chave = '"url":"https:';
+  let posBusca = 0;
+  while (true) {
+    const inicioChave = html.indexOf(chave, posBusca);
+    if (inicioChave === -1) return null;
+    const inicioValor = inicioChave + '"url":"'.length;
+    const fimValor = html.indexOf('"', inicioValor);
+    if (fimValor === -1) return null;
+    const valor = html.slice(inicioValor, fimValor);
+    if (valor.includes(procurado)) return { valor, indice: inicioChave };
+    posBusca = fimValor + 1;
+  }
+}
+
+/**
  * Link de afiliado gerado pelo "Gerador de produtos recomendados" do ML
  * (`meli.la/...`) não aponta pro produto — resolve pra `/social/{usuario}`,
  * o perfil público do afiliado com o produto originalmente compartilhado em
@@ -102,26 +136,80 @@ function limparUrlProduto(url: string): string {
  * marcador `c_id=/home/card-featured/element` (escapado) dentro do texto,
  * depois acha o campo `"url":"..."` que o envolve (o marcador é só mais um
  * parâmetro de query dentro do valor desse campo) e desescapa.
+ *
+ * `dados` vem preenchido a partir do MESMO JSON, sem precisar de uma
+ * segunda requisição pra página do produto em si — importante desde que o
+ * ML passou a bloquear fetch direto de página de produto/busca com uma
+ * parede de captcha (achado em produção 2026-08-27, ver comentário em
+ * meliHttp.ts), mesmo com sessão logada válida; a página de perfil social
+ * não cai nessa parede. `dados` só vem `null` se algum dos três campos
+ * (título/preço/imagem) não bater com o formato esperado — mais raro que a
+ * própria URL não ser achada, mas cada campo é extraído de forma
+ * independente, então um formato novo em só um deles não derruba os outros.
+ *
+ * A posição EXATA do marcador dentro do JSON varia entre respostas (a
+ * recomendação roda um pouco a cada fetch — testado com o mesmo link
+ * várias vezes seguidas em produção, 2026-08-27), então em vez de assumir
+ * uma direção fixa (antes/depois), o campo `"url"` certo é achado pelo
+ * CONTEÚDO (o único `"url":"..."` cujo valor contém o marcador — identifica
+ * sem ambiguidade o link "Ir para produto" dentro de `action_links`, nunca
+ * o `metadata.url`/`url_fragments`, mais curtos e sem esse marcador
+ * embutido). Os outros campos (título/preço/imagem) SEMPRE vêm ANTES desse
+ * link dentro do mesmo polycard (`pictures` → `components: [title, seller,
+ * price, shipping, action_links]`, nessa ordem fixa do schema), então
+ * busca pra trás a partir dele.
  */
-export async function buscarProdutoEmPerfilSocial(usuarioId: number, urlPerfil: string): Promise<string | null> {
+export async function buscarProdutoEmPerfilSocial(
+  usuarioId: number,
+  urlPerfil: string,
+): Promise<{ url: string; dados: DadosProdutoML | null } | null> {
   const { html } = await buscarPaginaMeli(usuarioId, urlPerfil);
-  const $ = cheerio.load(html);
 
-  const href = $('a[href*="c_id=/home/card-featured/element"]').first().attr("href");
-  if (href) return limparUrlProduto(href);
-
+  // Busca por texto puro (não regex) de propósito: o marcador contém barras
+  // escapadas como a sequência literal `/` (6 caracteres), que dentro
+  // de um padrão de regex seria reinterpretada como escape Unicode de "/"
+  // (1 caractere) — bug real encontrado construindo isso, corrigido antes
+  // de ir pra produção.
+  //
+  // Tenta o JSON primeiro (traz URL + título/preço/imagem juntos, numa
+  // passada só) — só cai pro `<a href>` do DOM (às vezes existe de
+  // verdade, não só no JSON de hidratação — achado em produção 2026-08-27
+  // testando o mesmo link várias vezes: umas horas tem o link real no
+  // HTML, outras só no JSON) como último recurso, que só dá a URL, sem os
+  // outros dados.
   const marcador = "c_id=\\u002Fhome\\u002Fcard-featured\\u002Felement";
-  const idxMarcador = html.indexOf(marcador);
-  if (idxMarcador === -1) return null;
+  const achado = acharValorDeUrlContendo(html, marcador);
+  if (!achado) {
+    const $ = cheerio.load(html);
+    const href = $('a[href*="c_id=/home/card-featured/element"]').first().attr("href");
+    return href ? { url: limparUrlProduto(href), dados: null } : null;
+  }
 
-  const inicioChave = html.lastIndexOf('"url":"', idxMarcador);
-  if (inicioChave === -1) return null;
-  const inicioValor = inicioChave + '"url":"'.length;
-  const fimValor = html.indexOf('"', inicioValor);
-  if (fimValor === -1 || fimValor < idxMarcador) return null; // marcador tem que estar dentro desse valor
+  const url = limparUrlProduto(achado.valor.replace(/\\u002F/g, "/"));
+  const idxActionUrl = achado.indice;
 
-  const valorBruto = html.slice(inicioValor, fimValor);
-  if (!valorBruto.startsWith("https:")) return null; // ignora a versão curta do campo, sem protocolo
+  // Janela pra trás a partir do link "Ir para produto" — cobre um polycard
+  // inteiro sem risco de pegar dado de um item vizinho (confirmado nos
+  // exemplos reais usados pra descobrir esse formato).
+  const janela = html.slice(Math.max(0, idxActionUrl - 4000), idxActionUrl);
 
-  return limparUrlProduto(valorBruto.replace(/\\u002F/g, "/"));
+  const tituloMatch = [...janela.matchAll(/"title":\{"text":"([^"]*)"/g)].at(-1);
+  const pictureIdMatch = [...janela.matchAll(/"pictures":\[\{"id":"([^"]+)"/g)].at(-1);
+  const precoAtualMatch = [...janela.matchAll(/"current_price":\{"value":([\d.]+)/g)].at(-1);
+  const precoAnteriorMatch = [...janela.matchAll(/"previous_price":\{"value":([\d.]+)/g)].at(-1);
+
+  if (!tituloMatch || !precoAtualMatch) return { url, dados: null };
+
+  const precoAtual = Number(precoAtualMatch[1]);
+  const precoAnterior = precoAnteriorMatch ? Number(precoAnteriorMatch[1]) : precoAtual;
+
+  return {
+    url,
+    dados: {
+      titulo: tituloMatch[1],
+      precoOriginal: precoAnterior,
+      precoPromocional: precoAnterior > precoAtual ? precoAtual : undefined,
+      imagemUrl: pictureIdMatch ? montarUrlImagem(pictureIdMatch[1]) : undefined,
+    },
+  };
 }

@@ -42,10 +42,15 @@ export async function processarProdutoDetectado(
       // Link de afiliado (meli.la) do "Gerador de produtos recomendados" não
       // aponta pro produto — resolve pro perfil social de quem postou, com o
       // produto original em destaque (ver buscarProdutoEmPerfilSocial).
-      const urlAchada = await buscarProdutoEmPerfilSocial(usuarioId, urlResolvida);
-      if (urlAchada) {
-        dados = await buscarDadosProduto(usuarioId, urlAchada);
-        if (dados) urlFinalProduto = urlAchada;
+      const achado = await buscarProdutoEmPerfilSocial(usuarioId, urlResolvida);
+      if (achado) {
+        urlFinalProduto = achado.url;
+        // `achado.dados` já vem do MESMO fetch da página de perfil social —
+        // evita uma segunda requisição pra página do produto em si, que
+        // desde 2026-08-27 cai numa parede de captcha do ML mesmo com sessão
+        // válida (ver meliHttp.ts). Só tenta a página do produto como último
+        // recurso se o JSON não trouxe os dados (raro).
+        dados = achado.dados ?? (await buscarDadosProduto(usuarioId, achado.url));
       }
     }
 
