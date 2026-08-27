@@ -26,7 +26,7 @@ export function NichosBloco({ nichos, onMudou }: { nichos: NichoRow[]; onMudou: 
         Categorias já configuradas pro Mercado Livre e pra Shopee — só ativa ou desativa quais entram na captura.
       </p>
 
-      <div className="flex flex-col divide-y overflow-hidden rounded-md border bg-card shadow-sm">
+      <div className="flex flex-col divide-y divide-border overflow-hidden rounded-lg border border-border bg-card shadow-soft">
         {nichos.map((n) => (
           <label key={n.id} className="flex cursor-pointer items-center justify-between gap-3 px-4 py-3">
             <span className="text-sm font-medium">{n.nome}</span>

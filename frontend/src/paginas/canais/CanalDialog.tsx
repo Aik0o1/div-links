@@ -276,7 +276,7 @@ export function CanalDialog({ aberto, onFechar, canal, nichos, onSalvo }: Props)
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4 rounded-md border bg-muted/40 p-3.5">
+          <div className="grid grid-cols-2 gap-4 rounded-lg border border-border bg-muted/40 p-3.5">
             <div className="flex flex-col gap-1.5">
               <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Nicho</span>
               <RadioGroup
@@ -341,7 +341,7 @@ export function CanalDialog({ aberto, onFechar, canal, nichos, onSalvo }: Props)
             </div>
           </div>
 
-          <div className="flex flex-col gap-1.5 rounded-md border bg-muted/40 p-3.5">
+          <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted/40 p-3.5">
             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Grupos monitorados
             </span>
@@ -354,30 +354,50 @@ export function CanalDialog({ aberto, onFechar, canal, nichos, onSalvo }: Props)
                 Nenhum grupo encontrado — conecte o WhatsApp e/ou o monitor de Telegram primeiro (aba Status).
               </p>
             ) : (
-              <div className="flex max-h-48 flex-col gap-1.5 overflow-y-auto">
-                {gruposDisponiveis.map((g) => {
-                  const marcado = form.gruposSelecionados.includes(g.id);
+              <div className="flex max-h-56 flex-col gap-3 overflow-y-auto">
+                {(["whatsapp", "telegram"] as const).map((plataforma) => {
+                  const grupos = gruposDisponiveis.filter((g) => g.plataforma === plataforma);
+                  if (grupos.length === 0) return null;
+                  const cor = plataforma === "whatsapp" ? "#25D366" : "#0088cc";
                   return (
-                    <div key={g.id} className="flex items-center justify-between gap-2">
-                      <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-sm font-normal">
-                        <Checkbox checked={marcado} onCheckedChange={(v) => alternarGrupo(g.id, v === true)} />
-                        <span className="truncate">{g.nome}</span>
-                        <span className="flex-shrink-0 text-xs text-muted-foreground capitalize">({g.plataforma})</span>
-                      </label>
-                      {marcado && (
-                        <Select value={nichoPorGrupo[g.id] ?? NICHO_PADRAO_GRUPO} onValueChange={(v) => mudarNichoGrupo(g.id, v)}>
-                          <SelectTrigger className="h-7 w-32 flex-shrink-0 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {nichos.map((n) => (
-                              <SelectItem key={n.id} value={n.id}>
-                                {n.nome}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
+                    <div key={plataforma} className="flex flex-col gap-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className="flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold text-white"
+                          style={{ backgroundColor: cor }}
+                        >
+                          {plataforma === "whatsapp" ? "W" : "T"}
+                        </span>
+                        <span className="text-xs font-semibold capitalize" style={{ color: cor }}>
+                          {plataforma}
+                        </span>
+                        <span className="text-xs text-muted-foreground">({grupos.length})</span>
+                      </div>
+                      {grupos.map((g) => {
+                        const marcado = form.gruposSelecionados.includes(g.id);
+                        return (
+                          <div key={g.id} className="flex items-center justify-between gap-2 pl-5.5">
+                            <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-sm font-normal">
+                              <Checkbox checked={marcado} onCheckedChange={(v) => alternarGrupo(g.id, v === true)} />
+                              <span className="truncate">{g.nome}</span>
+                            </label>
+                            {marcado && (
+                              <Select value={nichoPorGrupo[g.id] ?? NICHO_PADRAO_GRUPO} onValueChange={(v) => mudarNichoGrupo(g.id, v)}>
+                                <SelectTrigger className="h-7 w-32 flex-shrink-0 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {nichos.map((n) => (
+                                    <SelectItem key={n.id} value={n.id}>
+                                      {n.nome}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   );
                 })}

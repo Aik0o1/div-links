@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
 import { Plus, Settings2, Trash2 } from "lucide-react";
 import { api, mensagemAmigavel } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -66,15 +67,14 @@ export default function Canais() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-xl font-bold tracking-tight">Canais de destino</h2>
+      <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
         <Button onClick={abrirCriar}>
           <Plus className="h-4 w-4" />
           Adicionar canal
         </Button>
       </div>
 
-      <div className="mb-8 overflow-hidden rounded-md border shadow-sm">
+      <div className="mb-8 overflow-hidden rounded-lg border border-border bg-card shadow-soft">
         <Table>
           <TableHeader>
             <TableRow>
@@ -96,13 +96,19 @@ export default function Canais() {
               </TableRow>
             )}
             {canais.map((c) => (
-              <TableRow key={c.id}>
+              <TableRow key={c.id} className="group">
                 <TableCell>
                   <Switch checked={c.ativo} onCheckedChange={(v) => alternarAtivo(c, v)} />
                 </TableCell>
                 <TableCell className="font-medium">{c.nome || <span className="text-muted-foreground">sem nome</span>}</TableCell>
                 <TableCell>
-                  <Badge variant="secondary" className="capitalize">
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "border-transparent capitalize",
+                      c.tipo === "whatsapp" ? "bg-[#25D366]/10 text-[#128C4A]" : "bg-[#0088cc]/10 text-[#0088cc]",
+                    )}
+                  >
                     {c.tipo}
                   </Badge>
                 </TableCell>
@@ -112,7 +118,7 @@ export default function Canais() {
                 <TableCell className="text-right">{c.descontoMinimo}%</TableCell>
                 <TableCell className="text-right">{c.intervaloMinimoMinutos} min</TableCell>
                 <TableCell>
-                  <div className="flex justify-end gap-1.5">
+                  <div className="flex justify-end gap-1.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                     <Button variant="outline" size="icon-sm" title="Configurar" onClick={() => abrirEditar(c)}>
                       <Settings2 className="h-4 w-4" />
                     </Button>
