@@ -29,8 +29,11 @@ async function cookieObrigatorio(usuarioId: number): Promise<string> {
  * Segue redirects normalmente (serve tanto pra resolver link curto quanto
  * pra ler a página final de uma vez). Detecta a página de "tráfego
  * suspeito" (`/gz/account-verification` — aparece sem cookie válido, ou
- * quando expira) e converte num erro claro, em vez de deixar o chamador
- * tentar extrair produto de HTML de challenge.
+ * quando expira — e `/captcha/wall/...`, achada em produção 2026-08-27:
+ * cookie válido pra navegação geral, mas fetch de página de produto
+ * específica cai nessa parede de verificação) e converte num erro claro,
+ * em vez de deixar o chamador tentar extrair produto de HTML de challenge
+ * (o que faria parecer, silenciosamente, que o link "não é um produto").
  */
 export async function buscarPaginaMeli(usuarioId: number, url: string): Promise<{ html: string; urlFinal: string }> {
   const cookie = await cookieObrigatorio(usuarioId);
@@ -46,7 +49,11 @@ export async function buscarPaginaMeli(usuarioId: number, url: string): Promise<
   });
 
   const urlFinal = resposta.url;
-  if (urlFinal.includes("/gz/account-verification") || urlFinal.includes("suspicious-traffic")) {
+  if (
+    urlFinal.includes("/gz/account-verification") ||
+    urlFinal.includes("suspicious-traffic") ||
+    urlFinal.includes("/captcha/wall")
+  ) {
     throw new SessaoMeliExpiradaError();
   }
 

@@ -89,11 +89,39 @@ function limparUrlProduto(url: string): string {
  * o perfil público do afiliado com o produto originalmente compartilhado em
  * destaque no topo. O card do produto original é identificável de forma
  * exata: seu link contém `c_id=/home/card-featured/element`.
+ *
+ * Essa página de perfil social é hidratada no cliente (diferente da PDP) —
+ * o link do card em destaque não existe mais como `<a href>` literal no
+ * HTML do servidor, só dentro de um JSON de estado embutido num `<script>`
+ * (com toda barra `/` escapada como `/`), usado pelo React pra montar
+ * o carrossel depois. Descoberto em produção (2026-08-27): o seletor via
+ * cheerio parou de achar qualquer link nessa página (0 produtos de perfil
+ * social capturados por dias), mesmo com o card presente no JSON embutido.
+ * Por isso busca primeiro no DOM (caso o ML volte a renderizar como link
+ * de verdade) e cai pro parsing do JSON bruto como fallback: acha o
+ * marcador `c_id=/home/card-featured/element` (escapado) dentro do texto,
+ * depois acha o campo `"url":"..."` que o envolve (o marcador é só mais um
+ * parâmetro de query dentro do valor desse campo) e desescapa.
  */
 export async function buscarProdutoEmPerfilSocial(usuarioId: number, urlPerfil: string): Promise<string | null> {
   const { html } = await buscarPaginaMeli(usuarioId, urlPerfil);
   const $ = cheerio.load(html);
 
   const href = $('a[href*="c_id=/home/card-featured/element"]').first().attr("href");
-  return href ? limparUrlProduto(href) : null;
+  if (href) return limparUrlProduto(href);
+
+  const marcador = "c_id=\\u002Fhome\\u002Fcard-featured\\u002Felement";
+  const idxMarcador = html.indexOf(marcador);
+  if (idxMarcador === -1) return null;
+
+  const inicioChave = html.lastIndexOf('"url":"', idxMarcador);
+  if (inicioChave === -1) return null;
+  const inicioValor = inicioChave + '"url":"'.length;
+  const fimValor = html.indexOf('"', inicioValor);
+  if (fimValor === -1 || fimValor < idxMarcador) return null; // marcador tem que estar dentro desse valor
+
+  const valorBruto = html.slice(inicioValor, fimValor);
+  if (!valorBruto.startsWith("https:")) return null; // ignora a versão curta do campo, sem protocolo
+
+  return limparUrlProduto(valorBruto.replace(/\\u002F/g, "/"));
 }
