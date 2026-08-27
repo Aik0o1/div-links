@@ -81,21 +81,24 @@ export default function ConfigWhatsapp() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h2 className="mb-4 text-xl font-bold tracking-tight">Config. WhatsApp</h2>
-
       {status && (
         <div
-          className={`mb-3.5 flex flex-wrap items-center justify-between gap-4 rounded-md border-l-4 bg-card p-4 shadow-sm ${status.conectado ? "border-l-success" : "border-l-text-faint"}`}
+          className={`mb-3.5 flex flex-wrap items-center justify-between gap-4 rounded-lg border-l-4 bg-card p-4 shadow-soft ${status.conectado ? "border-l-success" : "border-l-text-faint"}`}
         >
-          <div>
-            <h3 className="font-semibold">WhatsApp (Evolution API)</h3>
-            <p className="text-sm text-muted-foreground">
-              {status.conectado
-                ? "Conectado."
-                : status.existe
-                  ? `Instância criada, mas desconectada (estado: ${status.estado ?? "desconhecido"}).`
-                  : "Instância ainda não criada — clique em Conectar pra gerar o QR code."}
-            </p>
+          <div className="flex items-center gap-2.5">
+            <span
+              className={`h-2 w-2 rounded-full ${status.conectado ? "animate-pulse bg-success" : status.existe ? "bg-warning" : "bg-text-faint"}`}
+            />
+            <div>
+              <h3 className="font-semibold text-foreground">WhatsApp (Evolution API)</h3>
+              <p className="text-sm text-muted-foreground">
+                {status.conectado
+                  ? "Conectado."
+                  : status.existe
+                    ? `Instância criada, mas desconectada (estado: ${status.estado ?? "desconhecido"}).`
+                    : "Instância ainda não criada — clique em Conectar pra gerar o QR code."}
+              </p>
+            </div>
           </div>
           <div className="flex gap-2">
             <Button onClick={() => setQrAberto(true)}>
@@ -111,14 +114,14 @@ export default function ConfigWhatsapp() {
       )}
 
       {grupos && (
-        <div className="rounded-md border bg-card p-3.5 shadow-sm">
+        <div className="rounded-lg border border-border bg-card p-3.5 shadow-soft">
           {grupos.length === 0 ? (
             <p className="py-2 text-sm text-muted-foreground">
               Nenhum grupo encontrado (conecte o WhatsApp e certifique-se de que ele já participa de algum grupo).
             </p>
           ) : (
             grupos.map((g) => (
-              <div key={g.jid} className="flex items-center justify-between gap-2 border-t py-2 first:border-t-0">
+              <div key={g.jid} className="flex items-center justify-between gap-2 border-t border-border py-2 first:border-t-0">
                 <span className="text-sm">
                   {g.nome} — <code className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{g.jid}</code>
                 </span>
@@ -140,7 +143,7 @@ export default function ConfigWhatsapp() {
           </DialogHeader>
           <div className="flex min-h-[280px] items-center justify-center">
             {qrBase64 ? (
-              <img src={qrBase64} alt="QR code do WhatsApp" className="h-64 w-64 rounded-md border bg-white p-2" />
+              <img src={qrBase64} alt="QR code do WhatsApp" className="h-64 w-64 rounded-lg border border-border bg-white p-2" />
             ) : (
               <p className="text-sm text-muted-foreground">Já conectado, ou QR indisponível no momento.</p>
             )}

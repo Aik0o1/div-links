@@ -98,21 +98,24 @@ export default function ConfigTelegram() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h2 className="mb-4 text-xl font-bold tracking-tight">Config. Telegram</h2>
-
       {status && (
         <div
-          className={`flex flex-wrap items-center justify-between gap-4 rounded-md border-l-4 bg-card p-4 shadow-sm ${ativo ? "border-l-success" : "border-l-text-faint"}`}
+          className={`flex flex-wrap items-center justify-between gap-4 rounded-lg border-l-4 bg-card p-4 shadow-soft ${ativo ? "border-l-success" : "border-l-text-faint"}`}
         >
-          <div>
-            <h3 className="font-semibold">Monitor de grupos (Telegram)</h3>
-            <p className="text-sm text-muted-foreground">
-              {ativo
-                ? `Monitorando ${numGrupos} grupo(s) — cupons e produtos novos são repassados automaticamente pros seus canais ativos.`
-                : status.autenticado
-                  ? "Conectado, mas nenhum grupo selecionado ainda — vá em Grupos monitorados."
-                  : "Não conectado — clique em Conectar e faça login com o número que vai monitorar os grupos."}
-            </p>
+          <div className="flex items-center gap-2.5">
+            <span
+              className={`h-2 w-2 rounded-full ${ativo ? "animate-pulse bg-success" : status.autenticado ? "bg-warning" : "bg-text-faint"}`}
+            />
+            <div>
+              <h3 className="font-semibold text-foreground">Monitor de grupos (Telegram)</h3>
+              <p className="text-sm text-muted-foreground">
+                {ativo
+                  ? `Monitorando ${numGrupos} grupo(s) — cupons e produtos novos são repassados automaticamente pros seus canais ativos.`
+                  : status.autenticado
+                    ? "Conectado, mas nenhum grupo selecionado ainda — vá em Grupos monitorados."
+                    : "Não conectado — clique em Conectar e faça login com o número que vai monitorar os grupos."}
+              </p>
+            </div>
           </div>
           <Button onClick={abrirModal}>
             <LogIn className="h-4 w-4" />

@@ -128,10 +128,8 @@ export default function ConfigAfiliados() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h2 className="mb-4 text-xl font-bold tracking-tight">Config. Afiliados</h2>
-
       <div
-        className={`mb-3.5 flex flex-wrap items-center justify-between gap-4 rounded-md border-l-4 bg-card p-4 shadow-sm ${meliCookieConfigurado ? "border-l-success" : "border-l-text-faint"}`}
+        className={`mb-3.5 flex flex-wrap items-center justify-between gap-4 rounded-lg border-l-4 bg-card p-4 shadow-soft ${meliCookieConfigurado ? "border-l-success" : "border-l-text-faint"}`}
       >
         <div className="flex items-start gap-3">
           <div
@@ -198,7 +196,7 @@ export default function ConfigAfiliados() {
                   Essa parte é meio técnica, mas é só seguir o passo a passo — depois de pronta uma vez, só precisa
                   repetir daqui a algumas semanas, quando o sistema avisar que parou de funcionar.
                 </p>
-                <ol className="flex flex-col gap-1.5 rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
+                <ol className="flex flex-col gap-1.5 rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
                   <li>
                     <b className="text-foreground">a.</b> Abra o mercadolivre.com.br numa aba, logado com a sua conta
                     de afiliado.
@@ -252,7 +250,7 @@ export default function ConfigAfiliados() {
       </Dialog>
 
       <div
-        className={`mb-6 flex flex-col gap-3.5 rounded-md border-l-4 bg-card p-4 shadow-sm ${shopeeConfigurado ? "border-l-success" : "border-l-text-faint"}`}
+        className={`mb-6 flex flex-col gap-3.5 rounded-lg border-l-4 bg-card p-4 shadow-soft ${shopeeConfigurado ? "border-l-success" : "border-l-text-faint"}`}
       >
         <div>
           <h3 className="font-semibold">
@@ -288,7 +286,7 @@ export default function ConfigAfiliados() {
       <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Configurações gerais</h3>
 
       <div
-        className={`mb-3.5 flex flex-wrap items-center justify-between gap-4 rounded-md border-l-4 bg-card p-4 shadow-sm ${chamadaIAAtiva ? "border-l-success" : "border-l-text-faint"}`}
+        className={`mb-3.5 flex flex-wrap items-center justify-between gap-4 rounded-lg border-l-4 bg-card p-4 shadow-soft ${chamadaIAAtiva ? "border-l-success" : "border-l-text-faint"}`}
       >
         <div>
           <h3 className="flex items-center gap-1.5 font-semibold">
@@ -306,7 +304,7 @@ export default function ConfigAfiliados() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 rounded-md border bg-card p-4 shadow-sm">
+      <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-4 shadow-soft">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="desconto-minimo">Desconto mínimo real (%) pra capturar um produto</Label>
           <Input
