@@ -27,8 +27,42 @@ export type Aba =
   | "cupons"
   | "assinatura";
 
+const ABAS_VALIDAS: readonly string[] = [
+  "dashboard",
+  "afiliados",
+  "whatsapp",
+  "telegram",
+  "canais",
+  "produtos",
+  "cupons",
+  "assinatura",
+];
+const CHAVE_ABA_SALVA = "promoflow:aba";
+
+/** Lê a última aba visitada — sem isso, dar F5 em qualquer aba sempre
+ * voltava pro Dashboard (não tem router, só esse `useState`; a página
+ * recarrega do zero e perde tudo que não esteja persistido). */
+function lerAbaSalva(): Aba {
+  try {
+    const salva = localStorage.getItem(CHAVE_ABA_SALVA);
+    if (salva && ABAS_VALIDAS.includes(salva)) return salva as Aba;
+  } catch {
+    // localStorage indisponível (modo privado, etc.) — cai no padrão
+  }
+  return "dashboard";
+}
+
 export default function App() {
-  const [aba, setAba] = useState<Aba>("dashboard");
+  const [aba, setAba] = useState<Aba>(lerAbaSalva);
+
+  function mudarAba(nova: Aba) {
+    setAba(nova);
+    try {
+      localStorage.setItem(CHAVE_ABA_SALVA, nova);
+    } catch {
+      // localStorage indisponível — só não persiste entre reloads, sem quebrar a navegação
+    }
+  }
   const { usuario, carregando: carregandoSessao, definirUsuario, logout } = useSessao();
   const { assinatura, carregando: carregandoAssinatura, recarregar: recarregarAssinatura } = useAssinatura(!!usuario);
   const [telaCadastro, setTelaCadastro] = useState(false);
@@ -82,10 +116,10 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground lg:flex-row">
-      <Sidebar abaAtiva={aba} onMudarAba={setAba} usuario={usuario} onSair={logout} />
+      <Sidebar abaAtiva={aba} onMudarAba={mudarAba} usuario={usuario} onSair={logout} />
       <main className="min-w-0 flex-1 p-4 sm:p-8">
         <TopBar aba={aba} disparo={disparo} />
-        {aba === "dashboard" && <Dashboard onNavegar={setAba} disparo={disparo} />}
+        {aba === "dashboard" && <Dashboard onNavegar={mudarAba} disparo={disparo} />}
         {aba === "afiliados" && <ConfigAfiliados />}
         {aba === "whatsapp" && <ConfigWhatsapp />}
         {aba === "telegram" && <ConfigTelegram />}

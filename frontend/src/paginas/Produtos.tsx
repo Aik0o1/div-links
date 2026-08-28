@@ -21,6 +21,13 @@ export default function Produtos() {
   const [nichos, setNichos] = useState<NichoRow[]>([]);
   const [abaAtiva, setAbaAtiva] = useState<string>("geral");
   const [limpando, setLimpando] = useState(false);
+  // Muda a cada limpeza bem-sucedida e entra no `key` de cada AbaProdutos —
+  // força remontar (e portanto refazer o fetch inicial) todas as abas de
+  // uma vez. Sem isso, `DELETE /produtos` limpava no banco mas a tela só
+  // refletia depois de um F5 manual: `setAbaAtiva((a) => a)` (tentativa
+  // anterior) reatribui o mesmo valor de string, então o React nem
+  // re-renderiza, e cada AbaProdutos só busca dados no próprio mount.
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     api<NichoRow[]>("/nichos").then((todos) => setNichos(todos.filter((n) => n.ativo)));
@@ -34,9 +41,7 @@ export default function Produtos() {
     try {
       await api("/produtos", { method: "DELETE" });
       toast.success("Produtos apagados.");
-      // Recarrega a aba atual — cada AbaProdutos busca sozinha ao montar, então
-      // um leve "reset" da aba ativa é suficiente pra refletir a limpeza.
-      setAbaAtiva((a) => a);
+      setRefreshKey((k) => k + 1);
     } catch (err) {
       toast.error(mensagemAmigavel(err));
     } finally {
@@ -78,11 +83,11 @@ export default function Produtos() {
 
         {nichos.map((n) => (
           <TabsContent key={n.id} value={n.id}>
-            <AbaProdutos fixedNicho={n.id} mostrarCapturar />
+            <AbaProdutos key={`${n.id}-${refreshKey}`} fixedNicho={n.id} mostrarCapturar />
           </TabsContent>
         ))}
         <TabsContent value={ABA_MONITORADOS}>
-          <AbaProdutos fixedFonte="monitorados" mostrarCapturar={false} nichosParaFiltro={nichos} />
+          <AbaProdutos key={`monitorados-${refreshKey}`} fixedFonte="monitorados" mostrarCapturar={false} nichosParaFiltro={nichos} />
         </TabsContent>
       </Tabs>
     </div>
