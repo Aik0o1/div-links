@@ -36,8 +36,7 @@
   --input: #e2e8f0;
   --ring: #2563eb;
 
-  --header: #14141f;
-  --header-alt: #1d1e2c;
+  --sidebar: #1e3a8a;
   --text-faint: #94a3b8;
 }
 
@@ -72,8 +71,7 @@
   --input: #223047;
   --ring: #60a5fa;
 
-  --header: #0a0a10;
-  --header-alt: #131320;
+  --sidebar: #14265c;
   --text-faint: #64748b;
 }
 
@@ -110,8 +108,7 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
-  --color-header: var(--header);
-  --color-header-alt: var(--header-alt);
+  --color-sidebar: var(--sidebar);
   --color-text-faint: var(--text-faint);
 
   --radius-sm: calc(var(--radius) - 4px);

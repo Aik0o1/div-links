@@ -37,10 +37,10 @@ export function Sidebar({
   onSair: () => void;
 }) {
   return (
-    <aside className="sticky top-0 z-20 flex w-full flex-shrink-0 flex-col gap-4 bg-primary p-4 lg:h-screen lg:w-[260px] lg:gap-6 lg:overflow-y-auto lg:p-5">
+    <aside className="sticky top-0 z-20 flex w-full flex-shrink-0 flex-col gap-4 bg-sidebar p-4 lg:h-screen lg:w-[260px] lg:gap-6 lg:overflow-y-auto lg:p-5">
       <div className="flex items-center gap-3 px-1.5">
         <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-primary-foreground shadow-soft">
-          <Link2 className="h-5 w-5 text-primary" />
+          <Link2 className="h-5 w-5 text-sidebar" />
         </span>
         <div>
           <h1 className="text-lg font-extrabold leading-tight tracking-tight text-primary-foreground">PromoFlow</h1>
@@ -56,7 +56,7 @@ export function Sidebar({
             onClick={() => onMudarAba(aba)}
             className={cn(
               "flex w-full flex-shrink-0 items-center gap-2.5 rounded-md px-3.5 py-2.5 text-left text-[13.5px] font-semibold whitespace-nowrap text-primary-foreground/70 transition-colors hover:bg-primary-foreground/10 hover:text-primary-foreground lg:whitespace-normal",
-              abaAtiva === aba && "bg-primary-foreground text-primary shadow-soft hover:bg-primary-foreground",
+              abaAtiva === aba && "bg-primary-foreground text-sidebar shadow-soft hover:bg-primary-foreground",
             )}
           >
             <Icon className="h-4 w-4 flex-shrink-0" />
