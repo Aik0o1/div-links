@@ -199,14 +199,31 @@ export async function verificarNovasMensagens(
       const ultimoId = ultimosIds[grupo.id];
 
       if (ultimoId === undefined) {
-        const [maisRecente] = await c.getMessages(grupo.id, { limit: 1 });
+        const [maisRecente] = await comTimeout(
+          c.getMessages(grupo.id, { limit: 1 }),
+          20000,
+          "Telegram demorou demais pra buscar a mensagem mais recente (timeout de 20s)",
+        );
         if (maisRecente) {
           await configuracoesRepo.definirTelegramUltimoId(usuarioId, grupo.id, maisRecente.id);
         }
         continue;
       }
 
-      const novas = await c.getMessages(grupo.id, { minId: ultimoId, limit: 30 });
+      // Mesmo timeout de listarDialogos (ver comentário lá) — achado em
+      // produção 2026-08-28: um processo rodando há muitas horas passou a
+      // travar pra sempre `getMessages` de UM grupo específico (os outros
+      // continuavam normais), sem nunca resolver nem rejeitar e sem
+      // nenhuma mensagem de erro — cursor desse grupo parado, cupons novos
+      // acumulando sem serem vistos, e nada nos logs pra apontar a causa.
+      // Uma conexão nova ao mesmo grupo funcionou na hora, então não era
+      // problema no lado do Telegram — parece degradação da conexão MTProto
+      // de processo de vida longa, específica por diálogo.
+      const novas = await comTimeout(
+        c.getMessages(grupo.id, { minId: ultimoId, limit: 30 }),
+        20000,
+        `Telegram demorou demais pra buscar mensagens novas do grupo ${grupo.id} (timeout de 20s)`,
+      );
       if (novas.length === 0) continue;
 
       const novasEmOrdem = [...novas].reverse(); // getMessages devolve mais nova primeiro
