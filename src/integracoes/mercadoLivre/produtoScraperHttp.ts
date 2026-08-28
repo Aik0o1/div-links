@@ -3,6 +3,19 @@ import { parsePreco } from "./parsePreco.js";
 import { buscarPaginaMeli } from "./meliHttp.js";
 
 /**
+ * Desescapa qualquer sequência `\uXXXX` de dentro do JSON embutido na página
+ * de perfil social (ver buscarProdutoEmPerfilSocial) — não só `/` (`/`,
+ * o caso mais comum), já que título de produto real pode ter outros
+ * caracteres escapados assim (`&`, aspas tipográficas, etc.). Bug real
+ * encontrado em produção: título com "/" no meio (ex.: código de modelo
+ * "QP1425/10") aparecia com o `/` literal na tela, porque só a URL
+ * era desescapada, não o título.
+ */
+function desescaparUnicode(texto: string): string {
+  return texto.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+}
+
+/**
  * Mesma interface pública de produtoScraper.ts (resolverUrlFinal,
  * buscarDadosProduto, buscarProdutoEmPerfilSocial), reimplementada sem
  * Chrome — via `fetch()` + cookie de sessão (meliHttp.ts) + cheerio pra
@@ -185,7 +198,7 @@ export async function buscarProdutoEmPerfilSocial(
     return href ? { url: limparUrlProduto(href), dados: null } : null;
   }
 
-  const url = limparUrlProduto(achado.valor.replace(/\\u002F/g, "/"));
+  const url = limparUrlProduto(desescaparUnicode(achado.valor));
   const idxActionUrl = achado.indice;
 
   // Janela pra trás a partir do link "Ir para produto" — cobre um polycard
@@ -206,7 +219,7 @@ export async function buscarProdutoEmPerfilSocial(
   return {
     url,
     dados: {
-      titulo: tituloMatch[1],
+      titulo: desescaparUnicode(tituloMatch[1]),
       precoOriginal: precoAnterior,
       precoPromocional: precoAnterior > precoAtual ? precoAtual : undefined,
       imagemUrl: pictureIdMatch ? montarUrlImagem(pictureIdMatch[1]) : undefined,
