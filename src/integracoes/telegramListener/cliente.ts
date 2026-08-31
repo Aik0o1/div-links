@@ -22,12 +22,35 @@ const loginsEmAndamento = new Map<number, { telefone: string; phoneCodeHash: str
  * WhatsApp respondendo normal. Timeout vira um erro claro (500) em vez de
  * pendurar a requisição — o chamador no frontend já trata falha de
  * qualquer uma das 4 chamadas com uma lista vazia, sem travar as outras.
+ *
+ * Descarta o client em cache quando o timeout dispara (não em qualquer
+ * outro erro — esses podem ser legítimos, ex.: grupo sem acesso) — achado
+ * em produção 2026-08-31: essa mesma trava reapareceu em MAIS chamadas
+ * (`isUserAuthorized`, `getMessages`) depois de o processo rodar ~9h,
+ * sempre no client cacheado desse usuário. Sem descartar, cada tentativa
+ * seguinte reusa a MESMA conexão degradada e trava de novo pra sempre —
+ * só um restart manual do processo resolvia. Descartando, a próxima
+ * chamada já cria uma conexão nova sozinha, sem precisar restart.
  */
-function comTimeout<T>(promessa: Promise<T>, ms: number, mensagem: string): Promise<T> {
-  return Promise.race([
-    promessa,
-    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(mensagem)), ms)),
-  ]);
+function evictarCliente(usuarioId: number): void {
+  const c = clientes.get(usuarioId);
+  clientes.delete(usuarioId);
+  // Não espera — se a conexão já tá travada, `.disconnect()` dela também
+  // pode travar. Só descarta a referência; a próxima obterCliente() já
+  // cria uma conexão nova, independente do que aconteça com essa antiga.
+  c?.disconnect().catch(() => {});
+}
+
+async function comTimeout<T>(usuarioId: number, promessa: Promise<T>, ms: number, mensagem: string): Promise<T> {
+  try {
+    return await Promise.race([
+      promessa,
+      new Promise<T>((_, reject) => setTimeout(() => reject(new Error(mensagem)), ms)),
+    ]);
+  } catch (err) {
+    if (err instanceof Error && err.message === mensagem) evictarCliente(usuarioId);
+    throw err;
+  }
 }
 
 async function obterCliente(usuarioId: number): Promise<TelegramClient> {
@@ -79,7 +102,17 @@ export interface StatusListener {
 export async function statusListener(usuarioId: number): Promise<StatusListener> {
   try {
     const c = await obterCliente(usuarioId);
-    const autenticado = await c.isUserAuthorized();
+    // Mesmo problema de listarDialogos/getMessages (ver comentários acima)
+    // achado agora nessa chamada também: `isUserAuthorized()` travando pra
+    // sempre num processo de vida longa — e como o diálogo de "Grupos
+    // monitorados" no frontend espera essa rota junto com as outras 3 num
+    // só Promise.all, essa travada sozinha bastava pra nada carregar.
+    const autenticado = await comTimeout(
+      usuarioId,
+      c.isUserAuthorized(),
+      20000,
+      "Telegram demorou demais pra confirmar autenticação (timeout de 20s)",
+    );
     const gruposMonitorados = await configuracoesRepo.obterTelegramListenerGrupos(usuarioId);
     return { autenticado, gruposMonitorados };
   } catch (err) {
@@ -140,6 +173,7 @@ export interface DialogoTelegram {
 export async function listarDialogos(usuarioId: number): Promise<DialogoTelegram[]> {
   const c = await obterCliente(usuarioId);
   const dialogos = await comTimeout(
+    usuarioId,
     c.getDialogs({}),
     20000,
     "Telegram demorou demais pra listar os grupos (timeout de 20s) — tente de novo em instantes.",
@@ -153,7 +187,12 @@ export async function listarDialogos(usuarioId: number): Promise<DialogoTelegram
 /** Busca as últimas mensagens de um grupo (histórico, não depende do polling). */
 export async function buscarMensagensRecentes(usuarioId: number, grupoId: string, limite = 10): Promise<string[]> {
   const c = await obterCliente(usuarioId);
-  const mensagens = await c.getMessages(grupoId, { limit: limite });
+  const mensagens = await comTimeout(
+    usuarioId,
+    c.getMessages(grupoId, { limit: limite }),
+    20000,
+    "Telegram demorou demais pra buscar mensagens recentes (timeout de 20s)",
+  );
   return mensagens.map(extrairTextoComLinksOcultos).filter((texto): texto is string => !!texto);
 }
 
@@ -190,7 +229,13 @@ export async function verificarNovasMensagens(
   if (grupos.length === 0) return;
 
   const c = await obterCliente(usuarioId);
-  if (!(await c.isUserAuthorized())) return;
+  const autenticado = await comTimeout(
+    usuarioId,
+    c.isUserAuthorized(),
+    20000,
+    "Telegram demorou demais pra confirmar autenticação (timeout de 20s)",
+  );
+  if (!autenticado) return;
 
   const ultimosIds = await configuracoesRepo.obterTelegramUltimosIds(usuarioId);
 
@@ -200,6 +245,7 @@ export async function verificarNovasMensagens(
 
       if (ultimoId === undefined) {
         const [maisRecente] = await comTimeout(
+          usuarioId,
           c.getMessages(grupo.id, { limit: 1 }),
           20000,
           "Telegram demorou demais pra buscar a mensagem mais recente (timeout de 20s)",
@@ -220,6 +266,7 @@ export async function verificarNovasMensagens(
       // problema no lado do Telegram — parece degradação da conexão MTProto
       // de processo de vida longa, específica por diálogo.
       const novas = await comTimeout(
+        usuarioId,
         c.getMessages(grupo.id, { minId: ultimoId, limit: 30 }),
         20000,
         `Telegram demorou demais pra buscar mensagens novas do grupo ${grupo.id} (timeout de 20s)`,
