@@ -17,15 +17,6 @@ async function definir(usuarioId: number, chave: string, valor: string): Promise
   );
 }
 
-export async function obterDescontoMinimo(usuarioId: number): Promise<number> {
-  const valor = await obter(usuarioId, "desconto_minimo");
-  return Number(valor ?? "0");
-}
-
-export async function definirDescontoMinimo(usuarioId: number, valor: number): Promise<void> {
-  await definir(usuarioId, "desconto_minimo", String(valor));
-}
-
 export async function obterDisparoAutomaticoAtivo(usuarioId: number): Promise<boolean> {
   const valor = await obter(usuarioId, "disparo_automatico_ativo");
   return valor === "true";

@@ -32,7 +32,6 @@ interface FormState {
   nome: string;
   tipo: "whatsapp" | "telegram";
   identificadorGrupo: string;
-  descontoMinimo: string;
   intervaloMinimoMinutos: string;
   ativo: boolean;
   geral: boolean;
@@ -47,7 +46,6 @@ function estadoInicial(canal: CanalRow | null): FormState {
     nome: canal?.nome ?? "",
     tipo: canal?.tipo ?? "telegram",
     identificadorGrupo: canal?.identificadorGrupo ?? "",
-    descontoMinimo: String(canal?.descontoMinimo ?? 0),
     intervaloMinimoMinutos: String(canal?.intervaloMinimoMinutos ?? 15),
     ativo: canal?.ativo ?? true,
     geral: categorias.length === 0,
@@ -140,7 +138,6 @@ export function CanalDialog({ aberto, onFechar, canal, nichos, onSalvo }: Props)
           body: JSON.stringify({
             nome: form.nome,
             identificadorGrupo: form.identificadorGrupo,
-            descontoMinimo: Number(form.descontoMinimo),
             intervaloMinimoMinutos: Number(form.intervaloMinimoMinutos),
             ativo: form.ativo,
             categoriasPermitidas,
@@ -156,7 +153,6 @@ export function CanalDialog({ aberto, onFechar, canal, nichos, onSalvo }: Props)
             nome: form.nome,
             tipo: form.tipo,
             identificadorGrupo: form.identificadorGrupo,
-            descontoMinimo: Number(form.descontoMinimo),
             intervaloMinimoMinutos: Number(form.intervaloMinimoMinutos),
             categoriasPermitidas,
             fontesPermitidas: form.fontesSelecionadas,
@@ -246,16 +242,6 @@ export function CanalDialog({ aberto, onFechar, canal, nichos, onSalvo }: Props)
                   em <code className="rounded bg-muted px-1">@g.us</code>).
                 </p>
               )}
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="canal-desconto">Desconto mín. (%)</Label>
-              <Input
-                id="canal-desconto"
-                type="number"
-                value={form.descontoMinimo}
-                onChange={(e) => setForm((f) => ({ ...f, descontoMinimo: e.target.value }))}
-              />
             </div>
 
             <div className="flex flex-col gap-1.5">

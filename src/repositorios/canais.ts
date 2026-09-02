@@ -10,7 +10,6 @@ export interface CanalRow {
   fontesPermitidas: string[] | null;
   /** Allow-list de grupos monitorados específicos (WhatsApp JID / Telegram chat id) — vazio/null sem restrição por grupo. Quando bate, ignora categoriasPermitidas pra esse produto (ver grupoMonitoradoStatus em dispararProduto.ts). */
   gruposMonitoradosPermitidos: string[] | null;
-  descontoMinimo: number;
   intervaloMinimoMinutos: number;
   ativo: boolean;
 }
@@ -24,7 +23,6 @@ function paraCanal(row: any): CanalRow {
     categoriasPermitidas: row.categorias_permitidas,
     fontesPermitidas: row.fontes_permitidas,
     gruposMonitoradosPermitidos: row.grupos_monitorados_permitidos,
-    descontoMinimo: Number(row.desconto_minimo),
     intervaloMinimoMinutos: row.intervalo_minimo_minutos,
     ativo: row.ativo,
   };
@@ -49,13 +47,12 @@ export async function criar(
     categoriasPermitidas?: string[] | null;
     fontesPermitidas?: string[] | null;
     gruposMonitoradosPermitidos?: string[] | null;
-    descontoMinimo?: number;
     intervaloMinimoMinutos?: number;
   },
 ): Promise<CanalRow> {
   const { rows } = await pool.query(
-    `INSERT INTO canais_destino (usuario_id, nome, tipo, identificador_grupo, categorias_permitidas, fontes_permitidas, grupos_monitorados_permitidos, desconto_minimo, intervalo_minimo_minutos)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `INSERT INTO canais_destino (usuario_id, nome, tipo, identificador_grupo, categorias_permitidas, fontes_permitidas, grupos_monitorados_permitidos, intervalo_minimo_minutos)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING *`,
     [
       usuarioId,
@@ -65,7 +62,6 @@ export async function criar(
       dados.categoriasPermitidas ?? null,
       dados.fontesPermitidas ?? null,
       dados.gruposMonitoradosPermitidos ?? null,
-      dados.descontoMinimo ?? 0,
       dados.intervaloMinimoMinutos ?? 15,
     ],
   );
@@ -81,7 +77,6 @@ export async function atualizar(
     categoriasPermitidas: string[] | null;
     fontesPermitidas: string[] | null;
     gruposMonitoradosPermitidos: string[] | null;
-    descontoMinimo: number;
     intervaloMinimoMinutos: number;
     ativo: boolean;
   }>,
@@ -106,7 +101,6 @@ export async function atualizar(
   if (dados.fontesPermitidas !== undefined) definir("fontes_permitidas", dados.fontesPermitidas);
   if (dados.gruposMonitoradosPermitidos !== undefined)
     definir("grupos_monitorados_permitidos", dados.gruposMonitoradosPermitidos);
-  if (dados.descontoMinimo !== undefined) definir("desconto_minimo", dados.descontoMinimo);
   if (dados.intervaloMinimoMinutos !== undefined)
     definir("intervalo_minimo_minutos", dados.intervaloMinimoMinutos);
   if (dados.ativo !== undefined) definir("ativo", dados.ativo);

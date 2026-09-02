@@ -16,7 +16,6 @@ rotaCanais.post("/", async (req, res) => {
     categoriasPermitidas,
     fontesPermitidas,
     gruposMonitoradosPermitidos,
-    descontoMinimo,
     intervaloMinimoMinutos,
   } = req.body;
   if (!tipo || !identificadorGrupo) {
@@ -40,7 +39,6 @@ rotaCanais.post("/", async (req, res) => {
     categoriasPermitidas,
     fontesPermitidas,
     gruposMonitoradosPermitidos,
-    descontoMinimo,
     intervaloMinimoMinutos,
   });
   res.status(201).json(canal);

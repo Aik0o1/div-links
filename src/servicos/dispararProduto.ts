@@ -14,7 +14,6 @@ import {
 } from "../integracoes/evolutionApi/bot.js";
 import { gerarChamada } from "../integracoes/ollama/gerarChamada.js";
 import { comMarcaDaguaSeTrial } from "./marcaDagua.js";
-import { calcularDesconto } from "./calcularDesconto.js";
 import { logger } from "../config/logger.js";
 import type { CanalRow } from "../repositorios/canais.js";
 import type { ProdutoRow } from "../repositorios/produtos.js";
@@ -110,7 +109,6 @@ export async function canaisElegiveis(usuarioId: number, produtoId: number): Pro
   if (!produto) throw new Error(`Produto ${produtoId} não encontrado`);
 
   const canais = await canaisRepo.listar(usuarioId);
-  const desconto = calcularDesconto(produto.precoOriginal, produto.precoPromocional);
 
   const resultado: CanalComElegibilidade[] = [];
 
@@ -156,15 +154,6 @@ export async function canaisElegiveis(usuarioId: number, produtoId: number): Pro
       continue;
     }
 
-    if (desconto < canal.descontoMinimo) {
-      resultado.push({
-        ...canal,
-        elegivel: false,
-        motivo: `desconto de ${desconto}% abaixo do mínimo do canal (${canal.descontoMinimo}%)`,
-      });
-      continue;
-    }
-
     // Intervalo mínimo entre disparos NÃO é checado aqui de propósito — essa
     // função só afeta a lista de canais elegíveis pra ENVIO MANUAL (aba
     // Produtos), e o usuário quer poder mandar um produto na hora, sem
@@ -195,8 +184,7 @@ export async function proximoProdutoElegivel(usuarioId: number, canal: CanalRow)
   for (const produto of candidatos) {
     if (!fonteElegivel(canal, produto.fonte)) continue;
     if (grupoMonitoradoStatus(canal, produto) === "bloqueado") continue;
-    const desconto = calcularDesconto(produto.precoOriginal, produto.precoPromocional);
-    if (desconto >= canal.descontoMinimo) elegiveis.push(produto);
+    elegiveis.push(produto);
   }
   if (elegiveis.length === 0) return null;
 

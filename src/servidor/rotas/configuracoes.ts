@@ -66,7 +66,6 @@ rotaConfiguracoes.put("/mercado-livre", async (req, res) => {
 
 rotaConfiguracoes.get("/", async (req, res) => {
   res.json({
-    descontoMinimo: await configuracoesRepo.obterDescontoMinimo(req.usuarioId),
     linkCupomFixo: await configuracoesRepo.obterLinkCupomFixo(req.usuarioId),
     linkCupomShopeeFixo: await configuracoesRepo.obterLinkCupomShopeeFixo(req.usuarioId),
     chamadaIAAtiva: await configuracoesRepo.obterChamadaIAAtiva(req.usuarioId),
@@ -84,14 +83,7 @@ rotaConfiguracoes.post("/chamada-ia/desativar", async (req, res) => {
 });
 
 rotaConfiguracoes.put("/", async (req, res) => {
-  const { descontoMinimo, linkCupomFixo, linkCupomShopeeFixo } = req.body;
-  if (descontoMinimo !== undefined) {
-    if (typeof descontoMinimo !== "number") {
-      res.status(400).json({ erro: "descontoMinimo precisa ser número" });
-      return;
-    }
-    await configuracoesRepo.definirDescontoMinimo(req.usuarioId, descontoMinimo);
-  }
+  const { linkCupomFixo, linkCupomShopeeFixo } = req.body;
   if (linkCupomFixo !== undefined) {
     if (typeof linkCupomFixo !== "string") {
       res.status(400).json({ erro: "linkCupomFixo precisa ser texto" });
@@ -107,7 +99,6 @@ rotaConfiguracoes.put("/", async (req, res) => {
     await configuracoesRepo.definirLinkCupomShopeeFixo(req.usuarioId, linkCupomShopeeFixo);
   }
   res.json({
-    descontoMinimo: await configuracoesRepo.obterDescontoMinimo(req.usuarioId),
     linkCupomFixo: await configuracoesRepo.obterLinkCupomFixo(req.usuarioId),
     linkCupomShopeeFixo: await configuracoesRepo.obterLinkCupomShopeeFixo(req.usuarioId),
   });

@@ -1,8 +1,6 @@
 import { buscarOfertasMercadoLivre } from "../integracoes/mercadoLivre/ofertasScraperHttp.js";
 import * as nichosRepo from "../repositorios/nichos.js";
-import * as configuracoesRepo from "../repositorios/configuracoes.js";
 import * as produtosRepo from "../repositorios/produtos.js";
-import { calcularDesconto } from "./calcularDesconto.js";
 import { logger } from "../config/logger.js";
 import type { ProdutoBruto } from "../types/produto.js";
 import type { NichoRow } from "../repositorios/nichos.js";
@@ -24,18 +22,11 @@ async function processarOfertas(
   usuarioId: number,
   ofertas: ProdutoBruto[],
   nichoId: string,
-  descontoMinimo: number,
   contadores: { novos: number; duplicados: number; ignorados: number },
 ): Promise<void> {
   for (const oferta of ofertas) {
     const dados = oferta.dadosEstruturados;
     if (!dados?.titulo || !dados.imagemUrl) {
-      contadores.ignorados++;
-      continue;
-    }
-
-    const desconto = calcularDesconto(dados.precoOriginal, dados.precoPromocional);
-    if (desconto < descontoMinimo) {
       contadores.ignorados++;
       continue;
     }
@@ -65,19 +56,18 @@ async function processarOfertas(
 async function capturarNichoML(
   usuarioId: number,
   nicho: NichoRow,
-  descontoMinimo: number,
   contadores: { novos: number; duplicados: number; ignorados: number },
 ): Promise<void> {
   if (nicho.categoriaIds.length === 0) {
     // Nicho sem categoria (ex.: "geral") -> busca a aba de Ofertas sem filtro, com mais páginas.
     const ofertas = await buscarOfertasMercadoLivre(usuarioId, PAGINAS_NICHO_GERAL);
-    await processarOfertas(usuarioId, ofertas, nicho.id, descontoMinimo, contadores);
+    await processarOfertas(usuarioId, ofertas, nicho.id, contadores);
     return;
   }
 
   for (const categoriaId of nicho.categoriaIds) {
     const ofertas = await buscarOfertasMercadoLivre(usuarioId, PAGINAS_POR_CATEGORIA, categoriaId);
-    await processarOfertas(usuarioId, ofertas, nicho.id, descontoMinimo, contadores);
+    await processarOfertas(usuarioId, ofertas, nicho.id, contadores);
   }
 }
 
@@ -90,13 +80,12 @@ async function capturarNichoML(
  */
 export async function capturarProdutos(usuarioId: number): Promise<ResultadoCaptura> {
   const nichos = await nichosRepo.ativos(usuarioId);
-  const descontoMinimo = await configuracoesRepo.obterDescontoMinimo(usuarioId);
 
   await produtosRepo.removerTodos(usuarioId);
 
   const contadores = { novos: 0, duplicados: 0, ignorados: 0 };
   for (const nicho of nichos) {
-    await capturarNichoML(usuarioId, nicho, descontoMinimo, contadores);
+    await capturarNichoML(usuarioId, nicho, contadores);
   }
 
   logger.info({ usuarioId, ...contadores }, "captura concluída (por categoria + geral)");
@@ -113,11 +102,10 @@ export async function capturarProdutosPorNicho(usuarioId: number, nichoId: strin
     throw new Error(`Nicho "${nichoId}" não encontrado ou inativo`);
   }
 
-  const descontoMinimo = await configuracoesRepo.obterDescontoMinimo(usuarioId);
   await produtosRepo.removerPorNichoEFonte(usuarioId, nichoId, "mercado_livre");
 
   const contadores = { novos: 0, duplicados: 0, ignorados: 0 };
-  await capturarNichoML(usuarioId, nicho, descontoMinimo, contadores);
+  await capturarNichoML(usuarioId, nicho, contadores);
 
   logger.info({ usuarioId, nicho: nichoId, ...contadores }, "captura por nicho concluída (Mercado Livre)");
   return { ...contadores, total: contadores.novos + contadores.duplicados + contadores.ignorados };

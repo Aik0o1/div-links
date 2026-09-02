@@ -33,7 +33,6 @@ export default function ConfigAfiliados() {
   const [salvandoShopee, setSalvandoShopee] = useState(false);
 
   const [chamadaIAAtiva, setChamadaIAAtiva] = useState(false);
-  const [descontoMinimo, setDescontoMinimo] = useState("0");
   const [linkCupomFixo, setLinkCupomFixo] = useState("");
   const [linkCupomShopeeFixo, setLinkCupomShopeeFixo] = useState("");
   const [salvandoConfig, setSalvandoConfig] = useState(false);
@@ -44,7 +43,6 @@ export default function ConfigAfiliados() {
         api<{ tag: string; cookieConfigurado: boolean }>("/configuracoes/mercado-livre"),
         api<{ appId: string; configurado: boolean }>("/configuracoes/shopee"),
         api<{
-          descontoMinimo: number;
           linkCupomFixo: string | null;
           linkCupomShopeeFixo: string | null;
           chamadaIAAtiva: boolean;
@@ -54,7 +52,6 @@ export default function ConfigAfiliados() {
       setMeliCookieConfigurado(meli.cookieConfigurado);
       setShopeeAppId(shopee.appId);
       setShopeeConfigurado(shopee.configurado);
-      setDescontoMinimo(String(config.descontoMinimo));
       setLinkCupomFixo(config.linkCupomFixo ?? "");
       setLinkCupomShopeeFixo(config.linkCupomShopeeFixo ?? "");
       setChamadaIAAtiva(config.chamadaIAAtiva);
@@ -118,7 +115,7 @@ export default function ConfigAfiliados() {
     try {
       await api("/configuracoes", {
         method: "PUT",
-        body: JSON.stringify({ descontoMinimo: Number(descontoMinimo), linkCupomFixo, linkCupomShopeeFixo }),
+        body: JSON.stringify({ linkCupomFixo, linkCupomShopeeFixo }),
       });
       toast.success("Configuração salva.");
     } catch (err) {
@@ -323,18 +320,6 @@ export default function ConfigAfiliados() {
       </div>
 
       <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-6 shadow-soft">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="desconto-minimo">Desconto mínimo real (%) pra capturar um produto</Label>
-          <Input
-            id="desconto-minimo"
-            type="number"
-            className="w-32"
-            min={0}
-            max={100}
-            value={descontoMinimo}
-            onChange={(e) => setDescontoMinimo(e.target.value)}
-          />
-        </div>
         <div className="flex flex-1 flex-col gap-1.5">
           <Label htmlFor="link-cupom-fixo">Link fixo dos cupons repassados (lista de recomendações do ML)</Label>
           <Input

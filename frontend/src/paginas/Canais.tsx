@@ -87,7 +87,6 @@ export default function Canais() {
               <TableHead>Nome</TableHead>
               <TableHead>Tipo</TableHead>
               <TableHead>Identificador</TableHead>
-              <TableHead className="text-right">Desconto mín.</TableHead>
               <TableHead className="text-right">Intervalo mín.</TableHead>
               <TableHead className="w-32 text-right">Ações</TableHead>
             </TableRow>
@@ -95,7 +94,7 @@ export default function Canais() {
           <TableBody>
             {!carregando && canais.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
                   Nenhum canal cadastrado ainda.
                 </TableCell>
               </TableRow>
@@ -120,7 +119,6 @@ export default function Canais() {
                 <TableCell className="max-w-[220px] truncate font-mono text-xs text-muted-foreground">
                   {c.identificadorGrupo}
                 </TableCell>
-                <TableCell className="text-right">{c.descontoMinimo}%</TableCell>
                 <TableCell className="text-right">{c.intervaloMinimoMinutos} min</TableCell>
                 <TableCell>
                   <div className="flex justify-end gap-1.5">
