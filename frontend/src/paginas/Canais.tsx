@@ -101,7 +101,7 @@ export default function Canais() {
               </TableRow>
             )}
             {canais.map((c) => (
-              <TableRow key={c.id} className="group">
+              <TableRow key={c.id}>
                 <TableCell>
                   <Switch checked={c.ativo} onCheckedChange={(v) => alternarAtivo(c, v)} />
                 </TableCell>
@@ -123,7 +123,7 @@ export default function Canais() {
                 <TableCell className="text-right">{c.descontoMinimo}%</TableCell>
                 <TableCell className="text-right">{c.intervaloMinimoMinutos} min</TableCell>
                 <TableCell>
-                  <div className="flex justify-end gap-1.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                  <div className="flex justify-end gap-1.5">
                     <Button variant="outline" size="icon-sm" title="Configurar" onClick={() => abrirEditar(c)}>
                       <Settings2 className="h-4 w-4" />
                     </Button>
