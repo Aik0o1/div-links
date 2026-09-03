@@ -21,9 +21,9 @@ const ETAPAS = [
 /**
  * Painel de marca da tela de login/cadastro — só aparece em telas largas
  * (o formulário fica sozinho no mobile, ver Login.tsx/Signup.tsx). O
- * pipeline numerado com o pulso animado é literal: é a sequência real que
- * o sistema roda pra cada produto (capturarProdutos → cupom/preço →
- * dispararProduto), não uma decoração genérica.
+ * pipeline numerado é literal: é a sequência real que o sistema roda pra
+ * cada produto (capturarProdutos → cupom/preço → dispararProduto), não
+ * uma decoração genérica.
  */
 export function PainelMarca({ headline }: { headline: string }) {
   return (
@@ -40,10 +40,8 @@ export function PainelMarca({ headline }: { headline: string }) {
         <h2 className="mt-3 font-display text-3xl leading-tight font-semibold text-balance">{headline}</h2>
 
         <ol className="relative mt-10 flex flex-col gap-8 pl-2">
-          {/* Linha vertical conectando as 3 etapas + o pulso que percorre ela */}
-          <div className="absolute top-4 bottom-4 left-[19px] w-px bg-white/15">
-            <span className="absolute left-1/2 h-2 w-2 -translate-x-1/2 rounded-full bg-warning shadow-[0_0_10px_2px_rgba(245,158,11,0.65)] animate-fluxo-pipeline" />
-          </div>
+          {/* Linha vertical conectando as 3 etapas */}
+          <div className="absolute top-4 bottom-4 left-[19px] w-px bg-white/15" />
           {ETAPAS.map(({ icone: Icone, titulo, texto }, i) => (
             <li key={titulo} className="relative flex gap-4">
               <span className="relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/20">

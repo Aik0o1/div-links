@@ -136,35 +136,3 @@
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
   }
 }
-
-/* Sinal percorrendo a linha do pipeline (painel de marca do login/cadastro,
-   ver PainelMarca.tsx) — um fluxo contínuo, não um salto entre pontos, pra
-   sugerir a automação rodando sozinha em segundo plano. */
-@keyframes fluxo-pipeline {
-  0% {
-    top: 0%;
-    opacity: 0;
-  }
-  8% {
-    opacity: 1;
-  }
-  92% {
-    opacity: 1;
-  }
-  100% {
-    top: 100%;
-    opacity: 0;
-  }
-}
-
-.animate-fluxo-pipeline {
-  animation: fluxo-pipeline 2.8s linear infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .animate-fluxo-pipeline {
-    animation: none;
-    top: 50%;
-    opacity: 0.7;
-  }
-}
