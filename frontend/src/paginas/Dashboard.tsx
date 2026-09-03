@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from "react";
-import { RefreshCw, CheckCircle2, XCircle, AlertTriangle, Send, Package, Clock, type LucideIcon } from "lucide-react";
+import { useEffect, useState, useCallback, type ReactNode } from "react";
+import { RefreshCw, CheckCircle2, XCircle, AlertTriangle, Send, Package, Clock, Pencil, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { api, mensagemAmigavel } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -112,7 +112,23 @@ export default function Dashboard({
             </p>
           </div>
         </div>
-        <JanelaDisparoDialog janela={disparo.janela} onSalvar={disparo.salvarJanela} />
+        <JanelaDisparoDialog janela={disparo.janela} onSalvar={disparo.salvarJanela}>
+          <button
+            type="button"
+            className="group flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-left transition-colors hover:bg-accent"
+            title="Clique pra configurar o horário de funcionamento"
+          >
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Horário de funcionamento
+              </p>
+              <p className="text-sm font-medium text-foreground">
+                {disparo.janela ? `${disparo.janela.inicio} às ${disparo.janela.fim}` : "24 horas por dia"}
+              </p>
+            </div>
+            <Pencil className="h-3.5 w-3.5 text-muted-foreground transition-colors group-hover:text-foreground" />
+          </button>
+        </JanelaDisparoDialog>
       </div>
 
       <h3 className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Hoje</h3>
@@ -173,9 +189,11 @@ function CardMetrica({ titulo, valor, Icon, cor }: { titulo: string; valor: numb
 function JanelaDisparoDialog({
   janela,
   onSalvar,
+  children,
 }: {
   janela: JanelaDisparoAutomatico | null;
   onSalvar: (janela: JanelaDisparoAutomatico | null) => Promise<void>;
+  children: ReactNode;
 }) {
   const [aberto, setAberto] = useState(false);
   const [restringir, setRestringir] = useState(janela !== null);
@@ -206,10 +224,7 @@ function JanelaDisparoDialog({
 
   return (
     <>
-      <Button variant="outline" size="sm" onClick={() => aoAbrir(true)}>
-        <Clock className="h-4 w-4" />
-        Horário
-      </Button>
+      <span onClick={() => aoAbrir(true)}>{children}</span>
 
       <Dialog open={aberto} onOpenChange={aoAbrir}>
         <DialogContent className="max-w-sm">
