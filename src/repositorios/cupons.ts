@@ -7,10 +7,18 @@ export interface CupomRow {
   recebidoEm: string;
   /** Id do grupo monitorado (WhatsApp JID ou Telegram chat id) que originou esse cupom — null se veio de antes dessa coluna existir. */
   grupoOrigemId: string | null;
+  /** Plataforma escolhida explicitamente ao criar manualmente (ver inserirManual) — null pra cupom capturado normalmente, que usa detectarPlataformaCupom no texto (parsearCupons.ts). */
+  plataformaManual: "shopee" | "mercado_livre" | null;
 }
 
 function paraCupom(row: any): CupomRow {
-  return { id: row.id, texto: row.texto, recebidoEm: row.recebido_em, grupoOrigemId: row.grupo_origem_id };
+  return {
+    id: row.id,
+    texto: row.texto,
+    recebidoEm: row.recebido_em,
+    grupoOrigemId: row.grupo_origem_id,
+    plataformaManual: row.plataforma_manual,
+  };
 }
 
 export function hashTexto(texto: string): string {
@@ -32,6 +40,29 @@ export async function inserirSeNovo(
     [usuarioId, texto, hash, grupoOrigemId ?? null],
   );
   return rows[0] ? paraCupom(rows[0]) : null;
+}
+
+/** Cria um cupom direto pelo painel (sem grupo monitorado), com a plataforma escolhida explicitamente — mesma dedup por hash de `inserirSeNovo` (devolve null se texto idêntico já existia). */
+export async function inserirManual(
+  usuarioId: number,
+  texto: string,
+  plataforma: "shopee" | "mercado_livre",
+): Promise<CupomRow | null> {
+  const hash = hashTexto(texto);
+  const { rows } = await pool.query(
+    `INSERT INTO cupons_capturados (usuario_id, texto, hash_conteudo, plataforma_manual)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (usuario_id, hash_conteudo) DO NOTHING
+     RETURNING *`,
+    [usuarioId, texto, hash, plataforma],
+  );
+  return rows[0] ? paraCupom(rows[0]) : null;
+}
+
+/** Apaga todos os cupons desse tenant (cascata limpa cupons_disparos junto) — pro botão "Apagar tudo" da aba Cupons. */
+export async function apagarTodos(usuarioId: number): Promise<number> {
+  const { rowCount } = await pool.query("DELETE FROM cupons_capturados WHERE usuario_id = $1", [usuarioId]);
+  return rowCount ?? 0;
 }
 
 export async function listarRecentes(usuarioId: number, limite = 50): Promise<CupomRow[]> {

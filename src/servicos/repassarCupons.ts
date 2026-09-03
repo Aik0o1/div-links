@@ -65,16 +65,26 @@ export async function dispararCupomPendente(usuarioId: number, canal: CanalRow):
 
   // Link fixo é config específica do Mercado Livre (lista de recomendações)
   // — cupom da Shopee usa o link de afiliado gerado a partir do próprio link
-  // que veio no post (ver detectarPlataformaCupom). Por isso não busca/exige
-  // aqui em cima mais: um cupom da Shopee não pode ficar bloqueado só porque
-  // o link fixo do ML não foi configurado.
-  const linkFixo = await configuracoesRepo.obterLinkCupomFixo(usuarioId);
+  // que veio no post (ver detectarPlataformaCupom), com o link fixo da
+  // Shopee (mesma config do voucher de produto, ver dispararProduto.ts) só
+  // como fallback pra cupom sem link no texto (ex.: criado manualmente pelo
+  // painel, ver inserirManual). Por isso não busca/exige aqui em cima mais:
+  // um cupom da Shopee não pode ficar bloqueado só porque o link fixo do ML
+  // não foi configurado.
+  const [linkFixo, linkShopeeFixo] = await Promise.all([
+    configuracoesRepo.obterLinkCupomFixo(usuarioId),
+    configuracoesRepo.obterLinkCupomShopeeFixo(usuarioId),
+  ]);
 
   for (const cupom of candidatos) {
     const cuponsExtraidos = extrairCupons(cupom.texto);
     if (cuponsExtraidos.length === 0) continue; // formato não reconhecível, nunca vai ser repassável
 
-    const { plataforma, urlShopee } = detectarPlataformaCupom(cupom.texto);
+    // Cupom criado manualmente já vem com a plataforma escolhida pelo
+    // usuário — não tem link de verdade no texto pra detectar (ver
+    // rotas/cupons.ts POST /manual).
+    const { plataforma: plataformaDetectada, urlShopee } = detectarPlataformaCupom(cupom.texto);
+    const plataforma = cupom.plataformaManual ?? plataformaDetectada;
 
     // Só Shopee e Mercado Livre têm geração de link de afiliado/despacho
     // automático hoje — cupom de outro marketplace (AliExpress, Amazon,
@@ -95,6 +105,9 @@ export async function dispararCupomPendente(usuarioId: number, canal: CanalRow):
         );
         continue;
       }
+    } else if (plataforma === "shopee") {
+      if (!linkShopeeFixo) continue; // sem link no texto E sem link fixo configurado — não tem como montar o link, pula
+      link = linkShopeeFixo;
     } else {
       if (!linkFixo) continue; // cupom do ML precisa do link fixo configurado — sem ele, pula (não é falha permanente)
       link = linkFixo;
