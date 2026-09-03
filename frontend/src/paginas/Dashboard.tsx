@@ -4,10 +4,14 @@ import { toast } from "sonner";
 import { api, mensagemAmigavel } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/TopBar";
 import { GraficoDisparos, type PontoHora } from "@/components/GraficoDisparos";
 import type { Aba } from "@/App";
-import type { DisparoAutomatico } from "@/lib/disparoAutomatico";
+import type { DisparoAutomatico, JanelaDisparoAutomatico } from "@/lib/disparoAutomatico";
 
 interface Metricas {
   enviadosHoje: number;
@@ -101,11 +105,14 @@ export default function Dashboard({
             <h3 className="font-semibold text-foreground">Disparo automático</h3>
             <p className="text-sm text-muted-foreground">
               {disparo.ativo
-                ? "Rodando — verificando os canais a cada 1 minuto e disparando sozinho."
+                ? disparo.janela
+                  ? `Rodando das ${disparo.janela.inicio} às ${disparo.janela.fim} — fora disso fica em espera.`
+                  : "Rodando — verificando os canais a cada 1 minuto e disparando sozinho."
                 : "Pausado — controle em Iniciar/Pausar no topo da tela."}
             </p>
           </div>
         </div>
+        <JanelaDisparoDialog janela={disparo.janela} onSalvar={disparo.salvarJanela} />
       </div>
 
       <h3 className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Hoje</h3>
@@ -156,5 +163,90 @@ function CardMetrica({ titulo, valor, Icon, cor }: { titulo: string; valor: numb
       </div>
       <p className="text-3xl font-bold text-foreground">{valor}</p>
     </div>
+  );
+}
+
+/** Configura a janela de horário em que o disparo automático pode enviar
+ * (ver agendadorDisparo.ts) — fora dela o agendador não processa esse
+ * tenant, mesmo com o disparo "ligado". Desligar o switch remove a
+ * restrição (volta a disparar a qualquer hora). */
+function JanelaDisparoDialog({
+  janela,
+  onSalvar,
+}: {
+  janela: JanelaDisparoAutomatico | null;
+  onSalvar: (janela: JanelaDisparoAutomatico | null) => Promise<void>;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const [restringir, setRestringir] = useState(janela !== null);
+  const [inicio, setInicio] = useState(janela?.inicio ?? "08:00");
+  const [fim, setFim] = useState(janela?.fim ?? "22:00");
+  const [salvando, setSalvando] = useState(false);
+
+  function aoAbrir(novoAberto: boolean) {
+    if (novoAberto) {
+      // Sincroniza com o valor atual toda vez que abre — evita mostrar um
+      // rascunho velho se o dialog foi aberto, fechado sem salvar, e aberto de novo.
+      setRestringir(janela !== null);
+      setInicio(janela?.inicio ?? "08:00");
+      setFim(janela?.fim ?? "22:00");
+    }
+    setAberto(novoAberto);
+  }
+
+  async function salvar() {
+    setSalvando(true);
+    try {
+      await onSalvar(restringir ? { inicio, fim } : null);
+      setAberto(false);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <>
+      <Button variant="outline" size="sm" onClick={() => aoAbrir(true)}>
+        <Clock className="h-4 w-4" />
+        Horário
+      </Button>
+
+      <Dialog open={aberto} onOpenChange={aoAbrir}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Horário do disparo automático</DialogTitle>
+            <DialogDescription>
+              Restrinja o envio a uma faixa de horário do dia — fora dela, fica em espera mesmo com o disparo ligado.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex items-center justify-between rounded-lg border border-border p-3">
+            <Label htmlFor="restringir-horario" className="cursor-pointer">
+              Restringir horário
+            </Label>
+            <Switch id="restringir-horario" checked={restringir} onCheckedChange={setRestringir} />
+          </div>
+
+          {restringir && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="janela-inicio">Início</Label>
+                <Input id="janela-inicio" type="time" value={inicio} onChange={(e) => setInicio(e.target.value)} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="janela-fim">Fim</Label>
+                <Input id="janela-fim" type="time" value={fim} onChange={(e) => setFim(e.target.value)} />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button onClick={salvar} disabled={salvando}>
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

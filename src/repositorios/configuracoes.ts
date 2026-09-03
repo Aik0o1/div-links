@@ -26,6 +26,38 @@ export async function definirDisparoAutomaticoAtivo(usuarioId: number, ativo: bo
   await definir(usuarioId, "disparo_automatico_ativo", String(ativo));
 }
 
+export interface JanelaDisparoAutomatico {
+  /** "HH:MM", fuso America/Sao_Paulo (ver agendadorDisparo.ts). */
+  inicio: string;
+  fim: string;
+}
+
+/**
+ * Janela de horário em que o disparo automático pode enviar (ex.: só das
+ * 08:00 às 22:00) — fora dela, o agendador simplesmente não processa esse
+ * tenant naquela rodada (ver agendadorDisparo.ts). `null` = sem restrição,
+ * dispara a qualquer hora (comportamento histórico, também o default se o
+ * usuário nunca configurou isso).
+ */
+export async function obterJanelaDisparoAutomatico(usuarioId: number): Promise<JanelaDisparoAutomatico | null> {
+  const valor = await obter(usuarioId, "disparo_automatico_janela");
+  return valor ? (JSON.parse(valor) as JanelaDisparoAutomatico) : null;
+}
+
+export async function definirJanelaDisparoAutomatico(
+  usuarioId: number,
+  janela: JanelaDisparoAutomatico | null,
+): Promise<void> {
+  if (janela === null) {
+    await pool.query("DELETE FROM configuracoes WHERE usuario_id = $1 AND chave = $2", [
+      usuarioId,
+      "disparo_automatico_janela",
+    ]);
+    return;
+  }
+  await definir(usuarioId, "disparo_automatico_janela", JSON.stringify(janela));
+}
+
 /**
  * Criptografada em repouso (ver config/criptografiaConfig.ts) — é a sessão
  * MTProto da conta pessoal do Telegram usada pra monitorar grupo de
