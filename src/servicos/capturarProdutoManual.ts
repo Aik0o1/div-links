@@ -15,6 +15,8 @@ export interface CapturaManualEntrada {
   precoPromocional?: number;
   precoNoPix?: boolean;
   nicho: string;
+  /** Mensagem de efeito opcional — quando ausente, disparo pode gerar uma por IA (ver dispararProduto.ts). */
+  chamada?: string;
 }
 
 /**
@@ -71,6 +73,7 @@ export async function capturarProdutoManual(
     cupom: entrada.cupom,
     nicho: entrada.nicho,
     precoNoPix: entrada.precoNoPix ?? false,
+    chamada: entrada.chamada,
   });
 
   if (resultado) {

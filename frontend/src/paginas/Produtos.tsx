@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/TopBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ProdutoCard } from "./produtos/ProdutoCard";
+import { AdicionarProdutoDialog } from "./produtos/AdicionarProdutoDialog";
 import type { ProdutoRow } from "./produtos/tipos";
 
 interface NichoRow {
@@ -137,6 +138,10 @@ function AbaProdutos({
     setProdutos((atual) => atual.filter((p) => p.id !== id));
   }
 
+  function atualizarNaLista(produtoAtualizado: ProdutoRow) {
+    setProdutos((atual) => atual.map((p) => (p.id === produtoAtualizado.id ? produtoAtualizado : p)));
+  }
+
   async function capturar() {
     if (!fixedNicho) return;
     setCapturando(true);
@@ -203,6 +208,7 @@ function AbaProdutos({
             {capturando ? "Capturando..." : "Capturar"}
           </Button>
         )}
+        {fixedNicho && <AdicionarProdutoDialog nicho={fixedNicho} onAdicionado={carregarProdutos} />}
       </div>
 
       {resultadoCaptura && <p className="mb-3 text-sm text-muted-foreground">{resultadoCaptura}</p>}
@@ -213,7 +219,7 @@ function AbaProdutos({
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {produtos.map((p) => (
-          <ProdutoCard key={p.id} produto={p} onRemovido={removerDaLista} />
+          <ProdutoCard key={p.id} produto={p} onRemovido={removerDaLista} onAtualizado={atualizarNaLista} />
         ))}
       </div>
     </div>

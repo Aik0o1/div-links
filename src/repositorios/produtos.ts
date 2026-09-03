@@ -260,6 +260,48 @@ export async function atualizarChamada(usuarioId: number, id: number, chamada: s
   await pool.query("UPDATE produtos SET chamada = $3 WHERE id = $1 AND usuario_id = $2", [id, usuarioId, chamada]);
 }
 
+/**
+ * Edição manual de qualquer campo "de conteúdo" do produto (aba Produtos —
+ * botão "Editar" em cada card) — título/preços/imagem/cupom errados ou que
+ * o usuário quer ajustar depois de capturado. Só altera as colunas cujo
+ * campo veio de verdade (`!== undefined`), mesmo padrão de canaisRepo.atualizar
+ * (deixa `null`/"" ser um valor válido e intencional sem exigir que todo PUT
+ * mande todos os campos juntos).
+ */
+export async function atualizar(
+  usuarioId: number,
+  id: number,
+  dados: Partial<{
+    titulo: string;
+    precoOriginal: number | null;
+    precoPromocional: number | null;
+    imagemUrl: string | null;
+    cupom: string | null;
+  }>,
+): Promise<ProdutoRow | null> {
+  const sets: string[] = [];
+  const valores: unknown[] = [id, usuarioId];
+
+  function definir(coluna: string, valor: unknown) {
+    valores.push(valor);
+    sets.push(`${coluna} = $${valores.length}`);
+  }
+
+  if (dados.titulo !== undefined) definir("titulo", dados.titulo);
+  if (dados.precoOriginal !== undefined) definir("preco_original", precoValido(dados.precoOriginal ?? undefined));
+  if (dados.precoPromocional !== undefined) definir("preco_promocional", precoValido(dados.precoPromocional ?? undefined));
+  if (dados.imagemUrl !== undefined) definir("imagem_url", dados.imagemUrl);
+  if (dados.cupom !== undefined) definir("cupom", dados.cupom);
+
+  if (sets.length === 0) return buscarPorId(usuarioId, id);
+
+  const { rows } = await pool.query(
+    `UPDATE produtos SET ${sets.join(", ")} WHERE id = $1 AND usuario_id = $2 RETURNING *`,
+    valores,
+  );
+  return rows[0] ? paraProduto(rows[0]) : null;
+}
+
 /** Produtos capturados "hoje" (fuso America/Sao_Paulo), qualquer status, desse tenant — card do Dashboard. */
 export async function contarCapturadosHoje(usuarioId: number): Promise<number> {
   const { rows } = await pool.query(

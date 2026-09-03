@@ -109,7 +109,7 @@ rotaProdutos.post("/capturar-shopee", async (req, res) => {
 // Captura avulsa de um produto específico por link (aba Produtos — "achei
 // uma oferta, adiciona na fila"). Ver capturarProdutoManual.ts.
 rotaProdutos.post("/capturar-manual", async (req, res) => {
-  const { url, cupom, precoPromocional, precoNoPix, nicho } = req.body;
+  const { url, cupom, chamada, precoPromocional, precoNoPix, nicho } = req.body;
   if (typeof url !== "string" || !url) {
     res.status(400).json({ erro: "url é obrigatória" });
     return;
@@ -122,6 +122,7 @@ rotaProdutos.post("/capturar-manual", async (req, res) => {
     const resultado = await capturarProdutoManual(req.usuarioId, {
       url,
       cupom: typeof cupom === "string" && cupom ? cupom : undefined,
+      chamada: typeof chamada === "string" && chamada ? chamada : undefined,
       precoPromocional: typeof precoPromocional === "number" ? precoPromocional : undefined,
       precoNoPix: typeof precoNoPix === "boolean" ? precoNoPix : undefined,
       nicho,
@@ -133,6 +134,60 @@ rotaProdutos.post("/capturar-manual", async (req, res) => {
     res.json(resultado);
   } catch (err) {
     logger.error({ err, url }, "falha ao capturar produto manualmente");
+    res.status(500).json({ erro: (err as Error).message });
+  }
+});
+
+// Edição manual do produto (aba Produtos — botão "Editar" em cada card).
+// Só as colunas de conteúdo (não mexe em fonte/nicho/status/etc.).
+rotaProdutos.put("/:id", async (req, res) => {
+  const { titulo, precoOriginal, precoPromocional, imagemUrl, cupom } = req.body;
+  const dados: Parameters<typeof produtosRepo.atualizar>[2] = {};
+  if (titulo !== undefined) {
+    if (typeof titulo !== "string" || !titulo.trim()) {
+      res.status(400).json({ erro: "titulo precisa ser texto não vazio" });
+      return;
+    }
+    dados.titulo = titulo;
+  }
+  if (precoOriginal !== undefined) {
+    if (precoOriginal !== null && typeof precoOriginal !== "number") {
+      res.status(400).json({ erro: "precoOriginal precisa ser número ou null" });
+      return;
+    }
+    dados.precoOriginal = precoOriginal;
+  }
+  if (precoPromocional !== undefined) {
+    if (precoPromocional !== null && typeof precoPromocional !== "number") {
+      res.status(400).json({ erro: "precoPromocional precisa ser número ou null" });
+      return;
+    }
+    dados.precoPromocional = precoPromocional;
+  }
+  if (imagemUrl !== undefined) {
+    if (imagemUrl !== null && typeof imagemUrl !== "string") {
+      res.status(400).json({ erro: "imagemUrl precisa ser texto ou null" });
+      return;
+    }
+    dados.imagemUrl = imagemUrl;
+  }
+  if (cupom !== undefined) {
+    if (cupom !== null && typeof cupom !== "string") {
+      res.status(400).json({ erro: "cupom precisa ser texto ou null" });
+      return;
+    }
+    dados.cupom = cupom;
+  }
+
+  try {
+    const produto = await produtosRepo.atualizar(req.usuarioId, Number(req.params.id), dados);
+    if (!produto) {
+      res.status(404).json({ erro: "produto não encontrado" });
+      return;
+    }
+    res.json(paraExibicao(produto));
+  } catch (err) {
+    logger.error({ err }, "falha ao editar produto");
     res.status(500).json({ erro: (err as Error).message });
   }
 });
