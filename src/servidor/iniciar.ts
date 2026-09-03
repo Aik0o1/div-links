@@ -1,6 +1,7 @@
 import { criarApp } from "./app.js";
 import { iniciarAgendadorDisparo } from "./agendadorDisparo.js";
 import { iniciarAgendadorMonitorTelegram } from "./agendadorMonitorTelegram.js";
+import { iniciarAgendadorLimpezaCupons } from "./agendadorLimpezaCupons.js";
 import { env } from "../config/env.js";
 import { logger } from "../config/logger.js";
 
@@ -31,6 +32,7 @@ app.listen(env.portaUi, () => {
 
 iniciarAgendadorDisparo();
 iniciarAgendadorMonitorTelegram();
+iniciarAgendadorLimpezaCupons();
 
 // configurarWebhook() não roda mais aqui uma vez fixo pra uma instância
 // global — desde o multi-tenant, cada tenant tem a própria instância

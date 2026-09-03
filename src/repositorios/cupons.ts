@@ -94,6 +94,21 @@ export async function listarPendentesParaCanal(
   return rows.map(paraCupom);
 }
 
+/**
+ * Apaga cupons capturados há mais de `dias` (qualquer tenant) — cai em
+ * cascata sobre `cupons_disparos` (ON DELETE CASCADE). Depois de
+ * `JANELA_RETENTATIVA_HORAS`, um cupom parado nunca mais é reenviado
+ * mesmo — não faz sentido guardar pra sempre só pra listar na aba Cupons
+ * (ver agendadorLimpezaCupons.ts). Devolve quantos removeu, só pra log.
+ */
+export async function removerAntigos(dias: number): Promise<number> {
+  const { rowCount } = await pool.query(
+    "DELETE FROM cupons_capturados WHERE recebido_em < now() - ($1::text || ' days')::interval",
+    [dias],
+  );
+  return rowCount ?? 0;
+}
+
 export async function registrarDisparo(
   usuarioId: number,
   cupomId: number,
