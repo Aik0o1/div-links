@@ -9,8 +9,8 @@ import { Button } from "@/components/ui/button";
  */
 export function GoogleButton() {
   return (
-    <Button variant="outline" className="w-full" asChild>
-      <a href="/api/auth/google">
+    <Button variant="outline" size="lg" className="block w-full" asChild>
+      <a href="/api/auth/google" className="flex items-center justify-center gap-2">
         <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
           <path
             fill="#4285F4"
