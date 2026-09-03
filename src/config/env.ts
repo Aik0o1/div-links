@@ -40,6 +40,13 @@ export const env = {
     // realmente veio do Mercado Pago (ver mercadoPago/webhookSignature.ts).
     webhookSecret: process.env.MERCADOPAGO_WEBHOOK_SECRET,
   },
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    // Tem que bater EXATAMENTE com o URI cadastrado no Google Cloud Console
+    // (Credentials -> OAuth client -> Authorized redirect URIs).
+    redirectUri: process.env.GOOGLE_REDIRECT_URI,
+  },
 };
 
 export function requiredTelegramConfig() {
@@ -74,4 +81,14 @@ export function requiredMercadoPagoConfig() {
     throw new Error("Configuração do Mercado Pago incompleta: defina MERCADOPAGO_ACCESS_TOKEN no .env");
   }
   return { accessToken };
+}
+
+export function requiredGoogleAuthConfig() {
+  const { clientId, clientSecret, redirectUri } = env.google;
+  if (!clientId || !clientSecret || !redirectUri) {
+    throw new Error(
+      "Login com Google incompleto: defina GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET e GOOGLE_REDIRECT_URI no .env",
+    );
+  }
+  return { clientId, clientSecret, redirectUri };
 }
