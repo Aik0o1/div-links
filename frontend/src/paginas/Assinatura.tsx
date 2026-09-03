@@ -26,6 +26,15 @@ const VARIANTE_STATUS: Record<string, string> = {
   isenta: "bg-success-soft text-success",
 };
 
+// "Domínio próprio" ainda não é uma feature de verdade (o painel não tem
+// página pública por tenant hoje) — mostrado por pedido do usuário mesmo
+// assim, pra tirar depois se não fizer sentido manter.
+const DOMINIO_POR_PLANO: Record<PlanoId, string> = {
+  basico: "Domínio próprio",
+  pro: "Múltiplos domínios",
+  plus: "Múltiplos domínios",
+};
+
 function formatarPrecoPlano(centavos: number): string {
   return (centavos / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -207,6 +216,14 @@ export default function Assinatura({ onAtualizar }: { onAtualizar?: () => void }
                     <li className="flex items-center gap-1.5">
                       <CheckCircle2 className="h-3.5 w-3.5 text-success" />
                       Produtos ilimitados
+                    </li>
+                    <li className="flex items-center gap-1.5">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+                      Sem marca d'água
+                    </li>
+                    <li className="flex items-center gap-1.5">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+                      {DOMINIO_POR_PLANO[plano.id]}
                     </li>
                   </ul>
                   {emTrialNessePlano && <p className="text-xs text-warning">Em teste grátis — ainda não é uma assinatura paga.</p>}
