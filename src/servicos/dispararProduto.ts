@@ -12,7 +12,6 @@ import {
   enviarFotoComLegenda as enviarFotoWhatsapp,
   enviarFotoLocalComLegenda as enviarFotoLocalWhatsapp,
 } from "../integracoes/evolutionApi/bot.js";
-import { gerarChamada } from "../integracoes/ollama/gerarChamada.js";
 import { comMarcaDaguaSeTrial } from "./marcaDagua.js";
 import { logger } from "../config/logger.js";
 import type { CanalRow } from "../repositorios/canais.js";
@@ -230,15 +229,7 @@ export async function dispararParaCanal(usuarioId: number, produtoId: number, ca
     throw new Error("Produto sem título ou imagem, não é possível disparar — marcado como falhou");
   }
 
-  let chamada = produto.chamada ?? undefined;
-  if (!chamada && (await configuracoesRepo.obterChamadaIAAtiva(usuarioId))) {
-    try {
-      chamada = await gerarChamada(produto.titulo);
-      await produtosRepo.atualizarChamada(usuarioId, produtoId, chamada);
-    } catch (err) {
-      logger.warn({ err, produtoId }, "falha ao gerar chamada via Ollama, seguindo sem ela");
-    }
-  }
+  const chamada = produto.chamada ?? undefined;
 
   try {
     // Algumas fontes (ex.: captura de ofertas da Shopee via `productOfferV2`)

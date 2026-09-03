@@ -68,18 +68,7 @@ rotaConfiguracoes.get("/", async (req, res) => {
   res.json({
     linkCupomFixo: await configuracoesRepo.obterLinkCupomFixo(req.usuarioId),
     linkCupomShopeeFixo: await configuracoesRepo.obterLinkCupomShopeeFixo(req.usuarioId),
-    chamadaIAAtiva: await configuracoesRepo.obterChamadaIAAtiva(req.usuarioId),
   });
-});
-
-rotaConfiguracoes.post("/chamada-ia/ativar", async (req, res) => {
-  await configuracoesRepo.definirChamadaIAAtiva(req.usuarioId, true);
-  res.json({ chamadaIAAtiva: true });
-});
-
-rotaConfiguracoes.post("/chamada-ia/desativar", async (req, res) => {
-  await configuracoesRepo.definirChamadaIAAtiva(req.usuarioId, false);
-  res.json({ chamadaIAAtiva: false });
 });
 
 rotaConfiguracoes.put("/", async (req, res) => {

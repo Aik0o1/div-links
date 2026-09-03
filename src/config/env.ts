@@ -20,10 +20,6 @@ export const env = {
   telegram: {
     botToken: process.env.TELEGRAM_BOT_TOKEN,
   },
-  ollama: {
-    url: process.env.OLLAMA_URL ?? "http://localhost:11434",
-    modelo: process.env.OLLAMA_MODELO ?? "qwen2.5:3b",
-  },
   evolutionApi: {
     url: process.env.EVOLUTION_API_URL ?? "http://localhost:8080",
     apiKey: process.env.EVOLUTION_API_KEY,

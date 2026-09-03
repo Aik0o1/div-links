@@ -61,7 +61,7 @@ Testado de ponta a ponta: captura real (608-1105 produtos novos por rodada, todo
 
 - **Não é um card com imagem+texto desenhados juntos.** Primeira versão usava Playwright/HTML pra renderizar um card flatten (uma imagem só, com preço/título embutidos) — **foi descartada** depois que o usuário mostrou um print de grupo de promoção real: o formato certo é a **foto original do produto sem edição** enviada como mídia, com **título/preço/link como legenda de texto** da mensagem (formato nativo do WhatsApp/Telegram).
 - `src/legenda/gerarLegenda.ts` monta a legenda: **chamada** (frase de efeito, opcional, linha solta antes do título), título em `*negrito*`, linha "De: X | Por: Y 🔥" (só quando há desconto real), linha de cupom se houver, e "Link: ..." no final.
-- **Chamada gerada por IA local (Ollama)**: `src/integracoes/ollama/gerarChamada.ts` chama `POST /api/generate` do Ollama (`OLLAMA_URL`, padrão `http://localhost:11434`; `OLLAMA_MODELO`, padrão `qwen2.5:3b` — baixado localmente, ~1.9GB) com um prompt few-shot pra criar uma frase curta de efeito a partir do título do produto. **Qualidade é inconsistente** (modelo pequeno, às vezes sai algo estranho/mal formado) — por isso a chamada é sempre **editável na UI** (aba Produtos, campo de texto por produto) com botão "Gerar com IA" (chama de novo) e "Salvar" (grava manualmente). Gerada **sob demanda**, nunca em massa na captura (custaria minutos pra 1000+ produtos) — só quando o usuário clica "Gerar com IA" ou automaticamente na primeira vez que o produto é disparado (`dispararParaCanal` gera e cacheia em `produtos.chamada` se estiver vazia).
+- **Chamada é só manual** (2026-09-03: removida a geração via IA local/Ollama que existia antes — qualidade inconsistente, modelo pequeno) — campo de texto editável por produto na aba Produtos, com botão "Salvar". Sem chamada preenchida, o disparo simplesmente sai sem essa linha.
 
 ### 2.4 Telegram
 
@@ -225,8 +225,6 @@ src/
       bot.ts                        enviarFotoComLegenda / enviarFotoLocalComLegenda / enviarTexto
     telegramListener/
       cliente.ts                    MTProto (GramJS) — login em etapas, sessão no Postgres, listarDialogos, verificarNovasMensagens (polling, ver seção 2.10)
-    ollama/
-      gerarChamada.ts                gerarChamada(tituloProduto) — chama o Ollama local
     mercadoPago/
       cliente.ts, preapproval.ts, pagamentos.ts, webhookSignature.ts    cobrança (ver seção 2.13) — fetch puro, Checkout Pro de Assinaturas
   linkAfiliado/    tipos.ts, cache.ts (comCache, chave por tenant), linkMercadoLivre.ts, index.ts — gerar(usuarioId, urlProduto)
@@ -269,8 +267,6 @@ npm run ui                    # sobe o painel em http://localhost:$PORTA_UI
 Depois, acesse o painel e crie uma conta pela tela de cadastro (email+senha) — desde 2026-08-15 o sistema exige login (ver seção 2.12); o signup já semeia os 8 nichos padrão sozinho (`seedNichosPadrao`), não precisa rodar nada manual. Não existe mais uma migration que já vem com dado seedado pronto (nichos/config/canal eram seedados globalmente antes do multi-tenant) — cada conta nova começa vazia (exceto os nichos padrão) e configura o resto (canais, Shopee/ML/WhatsApp/Telegram) pela própria UI.
 
 Não precisa mais de `npx playwright install chromium` nem de Chrome instalado — desde 2026-08-13 nada no fluxo ativo abre navegador (ver seção 2.11). `playwright` continua como dependência no `package.json` só porque os arquivos antigos (sem uso) ainda importam ele.
-
-Também precisa do **Ollama** instalado ([ollama.com](https://ollama.com)) rodando localmente, com o modelo baixado: `ollama pull qwen2.5:3b` (ou outro, ajustando `OLLAMA_MODELO` no `.env`) — usado só pra gerar a "chamada" de cada produto, não é essencial pro resto do sistema funcionar (se o Ollama não estiver rodando, o disparo segue sem a chamada, só loga um aviso).
 
 O `docker compose up -d` acima já sobe **Postgres + Redis + Evolution API** (WhatsApp) juntos — não tem passo manual separado pra Evolution além de gerar o `EVOLUTION_API_KEY` (ver tabela abaixo) e conectar pelo painel (aba Status → "Conectar", escaneia o QR).
 

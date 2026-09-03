@@ -10,11 +10,11 @@ Sistema de automação para marketing de afiliados (Mercado Livre, por enquanto)
 - **Gera link de afiliado real** (link curto oficial `meli.la`) e legenda (com preço, desconto e cupom) pra cada produto.
 - **Dispara pro Telegram e WhatsApp** (Evolution API), manualmente ou automático, respeitando um intervalo mínimo por canal.
 - **Monitora grupos de terceiros** (Telegram via MTProto/GramJS, WhatsApp via webhook da Evolution API) e repassa cupons e produtos individuais capturados de lá com o seu link — produtos de grupo monitorado furam a fila (chegam antes dos demais) e podem ser roteados por nicho.
-- **Painel web** (`npm run ui`) pra configurar tudo: nichos, desconto mínimo, canais de destino, conexão do Mercado Livre/WhatsApp/Telegram, ver produtos capturados e disparar manualmente.
+- **Painel web** (`npm run ui`) pra configurar tudo: nichos, canais de destino, conexão do Mercado Livre/WhatsApp/Telegram, ver produtos capturados e disparar manualmente.
 
 ## Stack
 
-Node.js + TypeScript, Express, PostgreSQL, Redis, GramJS (monitor de Telegram), Evolution API self-hosted (WhatsApp), Ollama local (geração opcional da "chamada" de cada produto). A captura e a geração de link do Mercado Livre são feitas via HTTP puro (cookie de sessão + `cheerio`) — **não precisa de Chrome nem de nenhum navegador rodando** pro sistema funcionar no dia a dia.
+Node.js + TypeScript, Express, PostgreSQL, Redis, GramJS (monitor de Telegram), Evolution API self-hosted (WhatsApp). A captura e a geração de link do Mercado Livre são feitas via HTTP puro (cookie de sessão + `cheerio`) — **não precisa de Chrome nem de nenhum navegador rodando** pro sistema funcionar no dia a dia.
 
 ## Pré-requisitos
 
@@ -22,7 +22,6 @@ Node.js + TypeScript, Express, PostgreSQL, Redis, GramJS (monitor de Telegram), 
 - Docker (Postgres, Redis e Evolution API sobem via `docker compose`)
 - Conta de afiliado aprovada no [programa de afiliados do Mercado Livre](https://www.mercadolivre.com.br/l/afiliados-home)
 - Um navegador qualquer (Chrome, Firefox, o que preferir) — só pra pegar o cookie de sessão do Mercado Livre de vez em quando (ver passo 1 abaixo); não precisa ficar aberto rodando
-- [Ollama](https://ollama.com) rodando localmente (opcional — só pra gerar a "chamada" de cada produto; sem ele o disparo segue normal, sem essa frase)
 
 ## Como rodar
 

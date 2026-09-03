@@ -158,16 +158,6 @@ export async function definirWhatsappGruposMonitorados(usuarioId: number, grupos
   await definir(usuarioId, "whatsapp_grupos_monitorados", JSON.stringify(grupos));
 }
 
-/** Se desativado, o disparo (manual ou automático) não chama o Ollama pra gerar a chamada — vai sem ela. */
-export async function obterChamadaIAAtiva(usuarioId: number): Promise<boolean> {
-  const valor = await obter(usuarioId, "chamada_ia_ativa");
-  return valor !== "false"; // default ligado (comportamento histórico)
-}
-
-export async function definirChamadaIAAtiva(usuarioId: number, ativa: boolean): Promise<void> {
-  await definir(usuarioId, "chamada_ia_ativa", String(ativa));
-}
-
 /**
  * Última plataforma de captura em massa (ML ou Shopee) escolhida no disparo
  * automático — usada pra intercalar entre as duas em vez de FIFO estrito por

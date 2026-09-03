@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { Wand2, Save, Eye, Trash2, Send, Pencil } from "lucide-react";
+import { Save, Eye, Trash2, Send, Pencil } from "lucide-react";
 import { api, formatarPreco, mensagemAmigavel } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,7 +43,6 @@ export function ProdutoCard({
   onAtualizado: (produto: ProdutoRow) => void;
 }) {
   const [chamada, setChamada] = useState(produto.chamada ?? "");
-  const [gerando, setGerando] = useState(false);
   const [salvandoChamada, setSalvandoChamada] = useState(false);
   const [canaisAbertos, setCanaisAbertos] = useState(false);
   const [canais, setCanais] = useState<CanalElegivel[] | null>(null);
@@ -56,18 +55,6 @@ export function ProdutoCard({
   const ehMonitorado = FONTES_MONITORADAS.has(produto.fonte);
   const temDesconto =
     produto.precoOriginal && produto.precoPromocional && produto.precoOriginal > produto.precoPromocional;
-
-  async function gerarChamada() {
-    setGerando(true);
-    try {
-      const { chamada: nova } = await api<{ chamada: string }>(`/produtos/${produto.id}/gerar-chamada`, { method: "POST" });
-      setChamada(nova);
-    } catch (err) {
-      toast.error(mensagemAmigavel(err));
-    } finally {
-      setGerando(false);
-    }
-  }
 
   async function salvarChamada() {
     setSalvandoChamada(true);
@@ -207,16 +194,10 @@ export function ProdutoCard({
           onChange={(e) => setChamada(e.target.value)}
           className="h-9 text-xs"
         />
-        <div className="flex gap-1.5">
-          <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={gerarChamada} disabled={gerando}>
-            <Wand2 className="h-3.5 w-3.5" />
-            Gerar com IA
-          </Button>
-          <Button size="sm" className="flex-1 text-xs" onClick={salvarChamada} disabled={salvandoChamada}>
-            <Save className="h-3.5 w-3.5" />
-            Salvar
-          </Button>
-        </div>
+        <Button size="sm" className="text-xs" onClick={salvarChamada} disabled={salvandoChamada}>
+          <Save className="h-3.5 w-3.5" />
+          Salvar chamada
+        </Button>
 
         <Button variant="outline" size="sm" className="text-xs" onClick={alternarCanais}>
           <Eye className="h-3.5 w-3.5" />

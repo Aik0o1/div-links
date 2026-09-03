@@ -7,7 +7,6 @@ import { capturarProdutosPorNicho } from "../../servicos/capturarProdutos.js";
 import { capturarProdutosShopeePorNicho } from "../../servicos/capturarProdutosShopee.js";
 import { capturarProdutoManual } from "../../servicos/capturarProdutoManual.js";
 import { canaisElegiveis, dispararParaCanal } from "../../servicos/dispararProduto.js";
-import { gerarChamada } from "../../integracoes/ollama/gerarChamada.js";
 import { logger } from "../../config/logger.js";
 
 export const rotaProdutos = Router();
@@ -208,22 +207,6 @@ rotaProdutos.get("/:id/canais-elegiveis", async (req, res) => {
     res.json(canais);
   } catch (err) {
     res.status(404).json({ erro: (err as Error).message });
-  }
-});
-
-rotaProdutos.post("/:id/gerar-chamada", async (req, res) => {
-  try {
-    const produto = await produtosRepo.buscarPorId(req.usuarioId, Number(req.params.id));
-    if (!produto || !produto.titulo) {
-      res.status(404).json({ erro: "produto não encontrado" });
-      return;
-    }
-    const chamada = await gerarChamada(produto.titulo);
-    await produtosRepo.atualizarChamada(req.usuarioId, produto.id, chamada);
-    res.json({ chamada });
-  } catch (err) {
-    logger.error({ err }, "falha ao gerar chamada");
-    res.status(500).json({ erro: (err as Error).message });
   }
 });
 

@@ -1,12 +1,11 @@
 import { useEffect, useState, useCallback, type ReactNode } from "react";
 import { toast } from "sonner";
-import { Sparkles, Save, Store, ShoppingBag, ExternalLink, Cookie as CookieIcon, CheckCircle2 } from "lucide-react";
+import { Save, Store, ShoppingBag, ExternalLink, Cookie as CookieIcon, CheckCircle2 } from "lucide-react";
 import { api, mensagemAmigavel } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { PageHeader } from "@/components/TopBar";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -32,7 +31,6 @@ export default function ConfigAfiliados() {
   const [shopeeConfigurado, setShopeeConfigurado] = useState(false);
   const [salvandoShopee, setSalvandoShopee] = useState(false);
 
-  const [chamadaIAAtiva, setChamadaIAAtiva] = useState(false);
   const [linkCupomFixo, setLinkCupomFixo] = useState("");
   const [linkCupomShopeeFixo, setLinkCupomShopeeFixo] = useState("");
   const [salvandoConfig, setSalvandoConfig] = useState(false);
@@ -45,7 +43,6 @@ export default function ConfigAfiliados() {
         api<{
           linkCupomFixo: string | null;
           linkCupomShopeeFixo: string | null;
-          chamadaIAAtiva: boolean;
         }>("/configuracoes"),
       ]);
       setMeliTag(meli.tag);
@@ -54,7 +51,6 @@ export default function ConfigAfiliados() {
       setShopeeConfigurado(shopee.configurado);
       setLinkCupomFixo(config.linkCupomFixo ?? "");
       setLinkCupomShopeeFixo(config.linkCupomShopeeFixo ?? "");
-      setChamadaIAAtiva(config.chamadaIAAtiva);
     } catch (err) {
       toast.error(mensagemAmigavel(err));
     }
@@ -98,15 +94,6 @@ export default function ConfigAfiliados() {
       toast.error(mensagemAmigavel(err));
     } finally {
       setSalvandoShopee(false);
-    }
-  }
-
-  async function alternarChamadaIA(ativa: boolean) {
-    try {
-      await api(`/configuracoes/chamada-ia/${ativa ? "ativar" : "desativar"}`, { method: "POST" });
-      setChamadaIAAtiva(ativa);
-    } catch (err) {
-      toast.error(mensagemAmigavel(err));
     }
   }
 
@@ -296,28 +283,6 @@ export default function ConfigAfiliados() {
       </Dialog>
 
       <h3 className="mb-3 mt-8 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Configurações gerais</h3>
-
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-card p-6 shadow-soft">
-        <div className="flex items-center gap-3">
-          <span
-            className={cn(
-              "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full",
-              chamadaIAAtiva ? "bg-success/10 text-success" : "bg-muted text-muted-foreground",
-            )}
-          >
-            <Sparkles className="h-5 w-5" />
-          </span>
-          <div>
-            <h3 className="font-bold text-foreground">Chamada por IA</h3>
-            <p className="text-sm text-muted-foreground">
-              {chamadaIAAtiva
-                ? "Ativada — disparo (manual ou automático) gera a chamada via Ollama quando o produto não tiver uma."
-                : 'Desativada — disparo segue sem chamada (o botão "Gerar com IA" na aba Produtos continua funcionando normalmente).'}
-            </p>
-          </div>
-        </div>
-        <Switch checked={chamadaIAAtiva} onCheckedChange={alternarChamadaIA} />
-      </div>
 
       <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-6 shadow-soft">
         <div className="flex flex-1 flex-col gap-1.5">
