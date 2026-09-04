@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback, type ReactNode } from "react";
 import { toast } from "sonner";
-import { Save, Store, ShoppingBag, ExternalLink, Cookie as CookieIcon, CheckCircle2 } from "lucide-react";
+import { Save, ExternalLink, Cookie as CookieIcon, CheckCircle2 } from "lucide-react";
 import { api, mensagemAmigavel } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import logoML from "@/assets/logoML.webp";
+import logoShopee from "@/assets/logoShopee.png";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -119,17 +121,15 @@ export default function ConfigAfiliados() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="flex flex-col rounded-xl border border-border bg-card p-6 shadow-soft">
           <div className="mb-4 flex items-center gap-3">
-            <span
-              className={cn(
-                "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full",
-                meliCookieConfigurado ? "bg-success/10 text-success" : "bg-muted text-muted-foreground",
-              )}
-            >
-              <Store className="h-5 w-5" />
+            <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg border border-border bg-white p-2">
+              <img src={logoML} alt="Mercado Livre" className="h-full w-full object-contain" />
             </span>
             <div>
               <h3 className="font-bold text-foreground">Mercado Livre</h3>
-              <p className="text-xs text-muted-foreground">{meliCookieConfigurado ? "Conectado" : "Não conectado"}</p>
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className={cn("h-1.5 w-1.5 rounded-full", meliCookieConfigurado ? "bg-success" : "bg-muted-foreground/40")} />
+                {meliCookieConfigurado ? "Conectado" : "Não conectado"}
+              </p>
             </div>
           </div>
           <p className="mb-4 flex-1 text-sm text-muted-foreground">
@@ -144,17 +144,13 @@ export default function ConfigAfiliados() {
 
         <div className="flex flex-col rounded-xl border border-border bg-card p-6 shadow-soft">
           <div className="mb-4 flex items-center gap-3">
-            <span
-              className={cn(
-                "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full",
-                shopeeConfigurado ? "bg-success/10 text-success" : "bg-muted text-muted-foreground",
-              )}
-            >
-              <ShoppingBag className="h-5 w-5" />
+            <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg border border-border bg-white p-1.5">
+              <img src={logoShopee} alt="Shopee" className="h-full w-full object-contain" />
             </span>
             <div>
               <h3 className="font-bold text-foreground">Shopee</h3>
-              <p className="text-xs text-muted-foreground">
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className={cn("h-1.5 w-1.5 rounded-full", shopeeConfigurado ? "bg-success" : "bg-muted-foreground/40")} />
                 {shopeeConfigurado ? `Configurada — App ID ${shopeeAppId}` : "Não configurada"}
               </p>
             </div>
