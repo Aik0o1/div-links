@@ -1,22 +1,42 @@
 import { useEffect, useState, useCallback, type ReactNode } from "react";
 import { toast } from "sonner";
-import { Save, ExternalLink, Cookie as CookieIcon, CheckCircle2 } from "lucide-react";
+import { Save, ExternalLink, Cookie as CookieIcon, CheckCircle2, Link as LinkIcon } from "lucide-react";
 import { api, mensagemAmigavel } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import logoML from "@/assets/logoML.webp";
-import logoShopee from "@/assets/logoShopee.png";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PageHeader } from "@/components/TopBar";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import logoML from "@/assets/logoML.webp";
+import logoShopee from "@/assets/logoShopee.png";
+
+// Cor de marca de cada marketplace — uma faixa fina no topo do card, não o
+// resto da paleta (que continua neutra) — é a mesma ideia de usar a cor
+// real do WhatsApp/Telegram nos badges de plataforma em Canais.
+const COR_ML = "#2D3277";
+const COR_SHOPEE = "#EE4D2D";
 
 /** Círculo numerado — usado nos passos dos guias (Mercado Livre, etc.). */
 function NumeroPasso({ children }: { children: ReactNode }) {
   return (
     <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
       {children}
+    </span>
+  );
+}
+
+function BadgeStatus({ ok, textoOk, textoFalta }: { ok: boolean; textoOk: string; textoFalta: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
+        ok ? "bg-success/10 text-success" : "bg-muted text-muted-foreground",
+      )}
+    >
+      <span className={cn("h-1.5 w-1.5 rounded-full", ok ? "bg-success" : "bg-muted-foreground/40")} />
+      {ok ? textoOk : textoFalta}
     </span>
   );
 }
@@ -119,62 +139,75 @@ export default function ConfigAfiliados() {
       <PageHeader titulo="Config. Afiliados" subtitulo="Credenciais do Mercado Livre e da Shopee, e regras gerais de captura." />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="flex flex-col rounded-xl border border-border bg-card p-6 shadow-soft">
-          <div className="mb-4 flex items-center gap-3">
-            <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg border border-border bg-white p-2">
-              <img src={logoML} alt="Mercado Livre" className="h-full w-full object-contain" />
-            </span>
-            <div>
-              <h3 className="font-bold text-foreground">Mercado Livre</h3>
-              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span className={cn("h-1.5 w-1.5 rounded-full", meliCookieConfigurado ? "bg-success" : "bg-muted-foreground/40")} />
-                {meliCookieConfigurado ? "Conectado" : "Não conectado"}
-              </p>
+        <div className="flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-soft">
+          <div className="h-1.5" style={{ background: COR_ML }} />
+          <div className="flex flex-1 flex-col p-6">
+            <div className="mb-4 flex items-center gap-3">
+              <span className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-lg border border-border bg-white p-2">
+                <img src={logoML} alt="Mercado Livre" className="h-full w-full object-contain" />
+              </span>
+              <div className="flex flex-col gap-1.5">
+                <h3 className="font-bold text-foreground">Mercado Livre</h3>
+                <BadgeStatus ok={meliCookieConfigurado} textoOk="Conectado" textoFalta="Não conectado" />
+              </div>
             </div>
+            <p className="mb-5 flex-1 text-sm text-muted-foreground">
+              {meliCookieConfigurado
+                ? "Os links de afiliado são gerados automaticamente a partir da sua tag e do cookie de sessão."
+                : "Sem isso, nenhum produto do Mercado Livre pode ser capturado nem transformado em link de afiliado."}
+            </p>
+            <Button className="w-full" onClick={abrirGuiaMeli}>
+              {meliCookieConfigurado ? "Reconectar" : "Conectar"}
+            </Button>
           </div>
-          <p className="mb-4 flex-1 text-sm text-muted-foreground">
-            {meliCookieConfigurado
-              ? "Os links de afiliado são gerados automaticamente."
-              : "Sem isso, nenhum produto do Mercado Livre pode ser divulgado."}
-          </p>
-          <Button className="w-full" onClick={abrirGuiaMeli}>
-            {meliCookieConfigurado ? "Reconectar" : "Conectar"}
-          </Button>
         </div>
 
-        <div className="flex flex-col rounded-xl border border-border bg-card p-6 shadow-soft">
-          <div className="mb-4 flex items-center gap-3">
-            <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg border border-border bg-white p-1.5">
-              <img src={logoShopee} alt="Shopee" className="h-full w-full object-contain" />
-            </span>
-            <div>
-              <h3 className="font-bold text-foreground">Shopee</h3>
-              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span className={cn("h-1.5 w-1.5 rounded-full", shopeeConfigurado ? "bg-success" : "bg-muted-foreground/40")} />
-                {shopeeConfigurado ? `Configurada — App ID ${shopeeAppId}` : "Não configurada"}
-              </p>
+        <div className="flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-soft">
+          <div className="h-1.5" style={{ background: COR_SHOPEE }} />
+          <div className="flex flex-1 flex-col p-6">
+            <div className="mb-4 flex items-center gap-3">
+              <span className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-lg border border-border bg-white p-1.5">
+                <img src={logoShopee} alt="Shopee" className="h-full w-full object-contain" />
+              </span>
+              <div className="flex flex-col gap-1.5">
+                <h3 className="font-bold text-foreground">Shopee</h3>
+                <BadgeStatus
+                  ok={shopeeConfigurado}
+                  textoOk={`Configurada — App ID ${shopeeAppId}`}
+                  textoFalta="Não configurada"
+                />
+              </div>
             </div>
+            <a
+              href="https://open.shopee.com/"
+              target="_blank"
+              rel="noreferrer"
+              className="mb-3 inline-flex w-fit items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+            >
+              Abrir painel de desenvolvedor da Shopee
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+            <div className="flex flex-1 flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="shopee-appid">App ID</Label>
+                <Input id="shopee-appid" value={shopeeAppId} onChange={(e) => setShopeeAppId(e.target.value)} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="shopee-secret">Secret</Label>
+                <Input
+                  id="shopee-secret"
+                  type="password"
+                  placeholder={shopeeConfigurado ? "Deixe em branco pra manter o atual" : "Secret"}
+                  value={shopeeSecret}
+                  onChange={(e) => setShopeeSecret(e.target.value)}
+                />
+              </div>
+            </div>
+            <Button className="mt-4 w-full" onClick={salvarShopee} disabled={salvandoShopee || !shopeeAppId}>
+              <Save className="h-4 w-4" />
+              Salvar
+            </Button>
           </div>
-          <div className="flex flex-1 flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="shopee-appid">App ID</Label>
-              <Input id="shopee-appid" value={shopeeAppId} onChange={(e) => setShopeeAppId(e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="shopee-secret">Secret</Label>
-              <Input
-                id="shopee-secret"
-                type="password"
-                placeholder={shopeeConfigurado ? "Deixe em branco pra manter o atual" : "Secret"}
-                value={shopeeSecret}
-                onChange={(e) => setShopeeSecret(e.target.value)}
-              />
-            </div>
-          </div>
-          <Button className="mt-3 w-full" onClick={salvarShopee} disabled={salvandoShopee || !shopeeAppId}>
-            <Save className="h-4 w-4" />
-            Salvar
-          </Button>
         </div>
       </div>
 
@@ -280,29 +313,53 @@ export default function ConfigAfiliados() {
 
       <h3 className="mb-3 mt-8 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Configurações gerais</h3>
 
-      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-6 shadow-soft">
-        <div className="flex flex-1 flex-col gap-1.5">
-          <Label htmlFor="link-cupom-fixo">Link fixo dos cupons repassados (lista de recomendações do ML)</Label>
-          <Input
-            id="link-cupom-fixo"
-            placeholder="https://meli.la/xxxxxxx"
-            value={linkCupomFixo}
-            onChange={(e) => setLinkCupomFixo(e.target.value)}
-          />
+      <div className="rounded-xl border border-border bg-card p-6 shadow-soft">
+        <div className="mb-5 flex items-center gap-3">
+          <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <LinkIcon className="h-4 w-4" />
+          </span>
+          <div>
+            <h3 className="font-bold text-foreground">Links fixos de cupom</h3>
+            <p className="text-sm text-muted-foreground">
+              Usados quando um cupom repassado de um grupo monitorado não tem link de produto próprio pra apontar.
+            </p>
+          </div>
         </div>
-        <div className="flex flex-1 flex-col gap-1.5">
-          <Label htmlFor="link-cupom-shopee-fixo">Link fixo de cupons Shopee (produto de grupo monitorado)</Label>
-          <Input
-            id="link-cupom-shopee-fixo"
-            placeholder="https://s.shopee.com.br/xxxxxxx"
-            value={linkCupomShopeeFixo}
-            onChange={(e) => setLinkCupomShopeeFixo(e.target.value)}
-          />
+
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="link-cupom-fixo">Link fixo do Mercado Livre</Label>
+            <Input
+              id="link-cupom-fixo"
+              placeholder="https://meli.la/xxxxxxx"
+              value={linkCupomFixo}
+              onChange={(e) => setLinkCupomFixo(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Ex.: o link de uma lista de recomendações sua — vai na legenda dos cupons do ML sem link próprio.
+            </p>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="link-cupom-shopee-fixo">Link fixo da Shopee</Label>
+            <Input
+              id="link-cupom-shopee-fixo"
+              placeholder="https://s.shopee.com.br/xxxxxxx"
+              value={linkCupomShopeeFixo}
+              onChange={(e) => setLinkCupomShopeeFixo(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Usado em cupom da Shopee de grupo monitorado quando o post não traz um link de produto pra gerar o de
+              afiliado.
+            </p>
+          </div>
         </div>
-        <Button onClick={salvarConfigGeral} disabled={salvandoConfig}>
-          <Save className="h-4 w-4" />
-          Salvar
-        </Button>
+
+        <div className="mt-5 flex justify-end">
+          <Button onClick={salvarConfigGeral} disabled={salvandoConfig}>
+            <Save className="h-4 w-4" />
+            Salvar
+          </Button>
+        </div>
       </div>
     </div>
   );
